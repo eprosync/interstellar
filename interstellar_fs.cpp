@@ -1,0 +1,604 @@
+#include "interstellar_fs.hpp"
+#include <unordered_set>
+#include <sstream>
+#include <ostream>
+#include <fstream>
+#include <cstring>
+#include <string>
+#include <regex>
+
+#include <iostream>
+#include <vector>
+
+#if defined(_WIN32)
+    #include <windows.h>
+#elif defined(__linux__)
+    #include <unistd.h>
+    #include <limits.h>
+    #include <stdlib.h> 
+#endif
+
+const char* path_extension(const char* path) {
+    const char* last_dot = strrchr(path, '.');
+    const char* last_slash_unix = strrchr(path, '/');
+    const char* last_slash_win = strrchr(path, '\\');
+
+    const char* last_slash = last_slash_unix;
+    if (!last_slash || (last_slash_win && last_slash_win > last_slash)) {
+        last_slash = last_slash_win;
+    }
+
+    if (last_dot && (!last_slash || last_dot > last_slash)) {
+        return last_dot;
+    }
+
+    return "";
+}
+
+// TODO: We need async FS operations...
+namespace INTERSTELLAR_NAMESPACE::FS {
+    using namespace API;
+
+    std::string get_root() {
+        #if defined(_WIN32)
+            std::vector<char> buffer(MAX_PATH);
+            DWORD length = 0;
+
+            while (true) {
+                length = GetModuleFileNameA(NULL, buffer.data(), static_cast<DWORD>(buffer.size()));
+                if (length == 0) {
+                    return "";
+                }
+                else if (length < buffer.size()) {
+                    break;
+                }
+                else {
+                    // Buffer was too small; grow it
+                    buffer.resize(buffer.size() * 2);
+                }
+            }
+
+            std::string fullPath(buffer.data(), length);
+            size_t pos = fullPath.find_last_of("\\/");
+            return (pos != std::string::npos) ? fullPath.substr(0, pos) : "";
+
+        #elif defined(__linux__)
+            ssize_t length = 0;
+            std::vector<char> buffer(1024);
+
+            while (true) {
+                length = readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
+                if (length == -1) {
+                    return "";
+                }
+                else if (length < buffer.size() - 1) {
+                    buffer[length] = '\0'; // Null-terminate
+                    break;
+                }
+                else {
+                    // Buffer was too small; grow it
+                    buffer.resize(buffer.size() * 2);
+                }
+            }
+
+            std::string fullPath(buffer.data(), length);
+            size_t pos = fullPath.find_last_of('/');
+            return (pos != std::string::npos) ? fullPath.substr(0, pos) : "";
+
+        #else
+            return ""; // Unsupported platform
+        #endif
+    }
+
+    std::string root_path = ""; // This is to prevent some common isolation escape
+    std::vector<std::string> disallowedExtensions = {
+        ".exe", ".scr", ".bat", ".com", ".csh", ".msi", ".vb", ".vbs", ".vbe", ".ws", ".wsf", ".wsh", ".ps1"
+    };
+
+    bool within(std::string root_path, std::string file_path) {
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+        return full_path.string().rfind(root_path) == 0;
+    }
+
+    std::string localize(std::string root_path, std::string file_path) {
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            return "";
+        }
+
+        return full_path.string();
+    }
+
+    int join(lua_State* L) {
+        int args = lua::gettop(L);
+        std::filesystem::path joined;
+        for (int i = 1; i <= args; i++) {
+            std::filesystem::path str = luaL::checkcstring(L, i);
+            joined = joined / str;
+        }
+        lua::pushcstring(L, joined.string());
+        return 1;
+    }
+
+    std::string forward(std::string path) {
+        std::replace(path.begin(), path.end(), '\\', '/');
+        return path;
+    }
+
+    int forward(lua_State* L) {
+        lua::pushcstring(L, forward(luaL::checkcstring(L, 1)));
+        return 1;
+    }
+
+    std::string backward(std::string path) {
+        std::replace(path.begin(), path.end(), '/', '\\');
+        return path;
+    }
+
+    int backward(lua_State* L) {
+        lua::pushcstring(L, backward(luaL::checkcstring(L, 1)));
+        return 1;
+    }
+
+    std::string extname(std::string path) {
+        std::filesystem::path _path = path;
+        return _path.extension().string();
+    }
+
+    std::string extname(std::string path, std::string replace) {
+        std::filesystem::path _path = path;
+        _path.replace_extension(replace);
+        return _path.string();
+    }
+
+    int extname(lua_State* L) {
+        std::string path = luaL::checkcstring(L, 1);
+        if (!lua::isnil(L, 2)) {
+            lua::pushcstring(L, extname(path, luaL::checkcstring(L, 2)));
+        }
+        else {
+            lua::pushcstring(L, extname(path));
+        }
+        return 1;
+    }
+
+    std::string filename(std::string path) {
+        std::filesystem::path _path = path;
+        return _path.filename().string();
+    }
+
+    std::string filename(std::string path, std::string replace) {
+        std::filesystem::path _path = path;
+        _path.replace_filename(replace);
+        return _path.string();
+    }
+
+    int filename(lua_State* L) {
+        std::string path = luaL::checkcstring(L, 1);
+        if (!lua::isnil(L, 2)) {
+            lua::pushcstring(L, filename(path, luaL::checkcstring(L, 2)));
+        }
+        else {
+            lua::pushcstring(L, filename(path));
+        }
+        return 1;
+    }
+
+    std::string dirname(std::string path) {
+        std::filesystem::path _path = path;
+        return _path.parent_path().string();
+    }
+
+    std::string dirname(std::string path, std::string replace) {
+        std::filesystem::path _path = path;
+        _path = std::filesystem::path(replace) / _path.filename();
+        return _path.string();
+    }
+
+    int dirname(lua_State* L) {
+        std::string path = luaL::checkcstring(L, 1);
+        if (!lua::isnil(L, 2)) {
+            lua::pushcstring(L, dirname(path, luaL::checkcstring(L, 2)));
+        }
+        else {
+            lua::pushcstring(L, dirname(path));
+        }
+        return 1;
+    }
+
+    std::string sanitize(std::string input) {
+        #ifdef _WIN32
+        static const std::regex invalid_chars("[<>:\"|?*\n\r\t\b\f\v]");
+        std::string sanitized = std::regex_replace(input, invalid_chars, "_");
+
+        sanitized.erase(std::remove_if(sanitized.begin(), sanitized.end(),
+            [](unsigned char c) { return c < 32 || c > 126; }),
+            sanitized.end());
+
+        while (!sanitized.empty() && (sanitized.back() == ' ' || sanitized.back() == '.')) {
+            sanitized.pop_back();
+        }
+
+        static const std::unordered_set<std::string> reserved_names = {
+            "CON", "PRN", "AUX", "NUL",
+            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+        };
+
+        std::string name = std::filesystem::path(sanitized).stem().string();
+        if (reserved_names.count(name)) {
+            sanitized += "_safe";
+        }
+        #else
+        static const std::regex invalid_chars("[/\\0\n\r\t\b\f\v]");
+        std::string sanitized = std::regex_replace(input, invalid_chars, "_");
+
+        sanitized.erase(std::remove_if(sanitized.begin(), sanitized.end(),
+            [](unsigned char c) { return c < 32 || c > 126; }),
+            sanitized.end());
+
+        while (!sanitized.empty() && (sanitized.back() == ' ' || sanitized.back() == '.')) {
+            sanitized.pop_back();
+        }
+        #endif
+
+        if (sanitized.empty()) {
+            sanitized = "blank";
+        }
+
+        return sanitized;
+    }
+
+    int sanitize(lua_State* L) {
+        lua::pushcstring(L, sanitize(luaL::checkcstring(L, 1)));
+        return 1;
+    }
+
+    std::string read(std::string file_path) {
+        if (!std::filesystem::exists(file_path))
+            return "";
+        std::ifstream stream(file_path, std::ios_base::binary);
+        std::string file_content((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+        return file_content;
+    }
+
+    int read(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.read, attempt to escape directory");
+            return 0;
+        }
+
+        if (!std::filesystem::exists(full_path.string().c_str())) {
+            luaL::error(L, "fs.read, file does not exist");
+            return 0;
+        }
+
+        std::ifstream stream(full_path, std::ios_base::binary);
+        std::string file_content((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+        lua::pushcstring(L, file_content);
+
+        return 1;
+    }
+
+    bool write(std::string file_path, std::string file_content) {
+        std::string extension = path_extension(file_path.c_str());
+
+        std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+
+        for (const std::string& disallowedExtension : disallowedExtensions) {
+            if (extension == disallowedExtension) {
+                return false;
+            }
+        }
+
+        std::ofstream outfile(file_path, std::ios::out | std::ios::binary);
+
+        if (!outfile.is_open()) {
+            return false;
+        }
+
+        outfile.write(file_content.c_str(), file_content.size());
+        outfile.close();
+
+        return true;
+    }
+
+    int write(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.write, attempt to escape directory");
+            return 0;
+        }
+
+        std::string file_content = luaL::checkcstring(L, 2);
+        std::string extension = path_extension(full_path.string().c_str());
+
+        std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+
+        for (const std::string& disallowedExtension : disallowedExtensions) {
+            if (extension == disallowedExtension) {
+                luaL::error(L, "fs.write, forbidden extension");
+                return 0;
+            }
+        }
+
+        std::ofstream outfile(full_path, std::ios::out | std::ios::binary);
+        if (!outfile.is_open()) {
+            luaL::error(L, "fs.write, failed to open file for writing");
+            return 0;
+        }
+
+        outfile.write(file_content.c_str(), file_content.size());
+        outfile.close();
+
+        return 0;
+    }
+
+    bool isfile(std::string file_path) {
+        return std::filesystem::is_regular_file(file_path);
+    }
+
+    int isfile(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.isfile, attempt to escape directory");
+            return 0;
+        }
+
+        lua::pushboolean(L, std::filesystem::is_regular_file(full_path));
+
+        return 1;
+    }
+
+    bool isfolder(std::string folder_path) {
+        return std::filesystem::is_directory(folder_path);
+    }
+
+    int isfolder(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.isfolder, attempt to escape directory");
+            return 0;
+        }
+
+        lua::pushboolean(L, std::filesystem::is_directory(full_path));
+
+        return 1;
+    }
+
+    int listfiles(lua_State* L) {
+        std::string folder_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(folder_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.listfiles, attempt to escape directory");
+            return 0;
+        }
+
+        if (!std::filesystem::exists(full_path)) {
+            return 0;
+        }
+
+        lua::newtable(L);
+
+        size_t index = 1;
+
+        for (const auto& entry : std::filesystem::directory_iterator(full_path)) {
+            std::string filename = entry.path().filename().string();
+            lua::pushnumber(L, index++);
+            lua::pushcstring(L, filename);
+            lua::settable(L, -3);
+        }
+
+        return 1;
+    }
+
+    bool makefolder(std::string folder_path) {
+        return std::filesystem::create_directories(folder_path);
+    }
+
+    int makefolder(lua_State* L) {
+        std::string folder_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(folder_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.makefolder, attempt to escape directory");
+            return 0;
+        }
+
+        lua::pushboolean(L, std::filesystem::create_directories(full_path));
+
+        return 0;
+    }
+
+    bool delfolder(std::string folder_path) {
+        try {
+            return std::filesystem::remove_all(folder_path);
+        }
+        catch (std::exception& e) {
+            return false;
+        }
+    }
+
+    int delfolder(lua_State* L) {
+        std::string folder_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(folder_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.delfolder, attempt to escape directory");
+            return 0;
+        }
+
+        try {
+            if (!std::filesystem::remove_all(full_path)) {
+                luaL::error(L, "fs.delfolder, folder does not exist or could not be deleted");
+                return 0;
+            }
+        }
+        catch (std::exception& e) {
+            luaL::error(L, "fs.delfolder, folder appears to be in-use");
+            return 0;
+        }
+
+        return 0;
+    }
+
+    bool delfile(std::string file_path) {
+        return std::filesystem::remove(file_path);
+    }
+
+    int delfile(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.delfile, attempt to escape directory");
+            return 0;
+        }
+
+        if (!std::filesystem::remove(full_path)) {
+            luaL::error(L, "fs.delfile, file does not exist or could not be deleted");
+            return 0;
+        }
+
+        return 0;
+    }
+
+    bool append(std::string file_path, std::string file_content) {
+        std::string extension = path_extension(file_path.c_str());
+
+        std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+
+        for (const std::string& disallowedExtension : disallowedExtensions) {
+            if (extension == disallowedExtension) {
+                return false;
+            }
+        }
+
+        if (!std::filesystem::exists(file_path)) {
+            return false;
+        }
+
+        std::ofstream outfile(file_path, std::ios::app | std::ios::binary);
+
+        if (!outfile.is_open()) {
+            return false;
+        }
+
+        outfile.write(file_content.c_str(), file_content.size());
+        outfile.close();
+
+        return true;
+    }
+
+    int append(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.append, attempt to escape directory");
+            return 0;
+        }
+
+        std::string file_content = luaL::checkcstring(L, 2);
+        std::string extension = path_extension(full_path.string().c_str());
+        std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+
+        for (const std::string& disallowedExtension : disallowedExtensions) {
+            if (extension == disallowedExtension) {
+                luaL::error(L, "fs.append, forbidden extension");
+                return 0;
+            }
+        }
+
+        if (!std::filesystem::exists(full_path)) {
+            luaL::error(L, "fs.append, file does not exist");
+            return 0;
+        }
+
+        std::ofstream outFile;
+        outFile.open(full_path, std::ios_base::app | std::ios_base::binary);
+        outFile.write(file_content.c_str(), file_content.size());
+        outFile.close();
+
+        return 0;
+    }
+
+    void push(lua_State* L, UMODULE handle) {
+        lua::newtable(L);
+
+        lua::pushcfunction(L, read);
+        lua::setfield(L, -2, "read");
+
+        lua::pushcfunction(L, write);
+        lua::setfield(L, -2, "write");
+
+        lua::pushcfunction(L, isfile);
+        lua::setfield(L, -2, "isfile");
+
+        lua::pushcfunction(L, isfolder);
+        lua::setfield(L, -2, "isfolder");
+
+        lua::pushcfunction(L, listfiles);
+        lua::setfield(L, -2, "listfiles");
+
+        lua::pushcfunction(L, makefolder);
+        lua::setfield(L, -2, "makefolder");
+
+        lua::pushcfunction(L, delfolder);
+        lua::setfield(L, -2, "delfolder");
+
+        lua::pushcfunction(L, delfile);
+        lua::setfield(L, -2, "delfile");
+
+        lua::pushcfunction(L, append);
+        lua::setfield(L, -2, "append");
+
+        lua::pushcfunction(L, sanitize);
+        lua::setfield(L, -2, "sanitize");
+
+        lua::pushcfunction(L, extname);
+        lua::setfield(L, -2, "extname");
+
+        lua::pushcfunction(L, filename);
+        lua::setfield(L, -2, "filename");
+
+        lua::pushcfunction(L, dirname);
+        lua::setfield(L, -2, "dirname");
+
+        lua::pushcfunction(L, join);
+        lua::setfield(L, -2, "join");
+
+        lua::pushcfunction(L, forward);
+        lua::setfield(L, -2, "forward");
+
+        lua::pushcfunction(L, backward);
+        lua::setfield(L, -2, "backward");
+    }
+
+    void api(std::string root) {
+        root_path = (root.size() > 0 ? root : get_root());
+        Reflection::add("fs", push);
+    }
+}
