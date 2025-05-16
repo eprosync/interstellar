@@ -187,6 +187,25 @@ namespace INTERSTELLAR_NAMESPACE {
                 luaL::unref(L, indexer::registry, reference);
             }
 
+            static int writer_dump(lua_State* L, const void* p, size_t size, void* sb)
+            {
+                std::string& buffer = *(std::string*)sb;
+                buffer.append((const char*)p, size);
+                return 0;
+            }
+
+            std::string dump(lua_State* L, int index)
+            {
+                if (!lua::islfunction(L, index)) {
+                    return "";
+                }
+                std::string buffer;
+                lua::pushvalue(L, index);
+                lua::dump(L, writer_dump, (void*)&buffer);
+                lua::pop(L);
+                return buffer;
+            }
+
             int fetch(UMODULE hndle)
             {
                 int start = 1;
@@ -1431,6 +1450,73 @@ namespace INTERSTELLAR_NAMESPACE {
                 lua::pushboolean(to, lua::toboolean(from, index));
                 break;
             }
+            case datatype::proto: {
+                using namespace Engine;
+                TValue* value = lua::toraw(from, index);
+                GCproto* object = protoV(value);
+
+                lua::pushnil(to); // TODO: prototype transfering, probably gonna have to do some alloc resize here with GC...
+
+                break;
+            }
+            case datatype::function: {
+                using namespace Engine;
+                TValue* value = lua::toraw(from, index);
+                GCfunc* object = funcV(value);
+
+                if (object->l.ffid == FF_LUA) {
+                    std::string fname = ""; // TODO: placeholder for now
+                    std::string btcode = luaL::dump(from, index);
+
+                    std::string err = Reflection::compile(to, btcode, fname);
+
+                    if (err.size() > 0) {
+                        if (no_error) {
+                            return type;
+                        }
+                        luaL::error(to, (std::string() + "reflection transfer error: " + lua::gettypename(from, type) + " -> " + err).c_str());
+                        break;
+                    }
+                    
+                    lua_Debug ar;
+                    lua::pushvalue(from, index);
+                    if (lua::getinfo(from, ">u", &ar) && ar.nups > 0) {
+                        for (int i = 1; i <= ar.nups; ++i) {
+                            const char* name = lua::getupvalue(from, index, i);
+                            if (name == nullptr) break;
+                            int err = transfer(from, to, -1, no_error);
+                            lua::pop(from);
+                            if (err != 0) {
+                                return err;
+                            }
+                            lua::setupvalue(to, -2, i);
+                        }
+                    }
+                }
+                else {
+                    lua_Debug ar;
+                    size_t upvalues = 0;
+                    lua::pushvalue(from, index);
+                    if (lua::getinfo(from, ">u", &ar) && ar.nups > 0) {
+                        upvalues = ar.nups;
+
+                        for (int i = 1; i <= upvalues; ++i) {
+                            const char* name = lua::getupvalue(from, index, i);
+                            if (name == nullptr) break;
+                            int err = transfer(from, to, -1, no_error);
+                            lua::pop(from);
+                            if (err != 0) {
+                                lua::pop(to, i);
+                                return err;
+                            }
+                        }
+                    }
+
+                    lua::pushcclosure(to, object->c.f, upvalues);
+                }
+
+                break;
+            }
             case datatype::userdata: {
                 using namespace Engine;
                 TValue* value = lua::toraw(from, index);
@@ -1701,14 +1787,14 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
 
         namespace Functions {
 
-            int pushtransfer(lua_State* L) {
+            int pushany(lua_State* L) {
                 lua_State* target = from_class(L, 1); if (target == nullptr) return 0;
                 luaL::checkany(L, 2);
                 Reflection::transfer(L, target, 2);
                 return 0;
             }
 
-            int gettransfer(lua_State* L) {
+            int getany(lua_State* L) {
                 lua_State* target = from_class(L, 1); if (target == nullptr) return 0;
                 Reflection::transfer(target, L, luaL::checknumber(L, 2));
                 return 1;
@@ -1920,6 +2006,73 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
             {
                 lua_State* target = from_class(L, 1); if (target == nullptr) return 0;
                 lua::pushstring(target, luaL::checkcstring(L, 2).c_str()); return 0;
+            }
+
+            int pushfunction(lua_State* from)
+            {
+                lua_State* to = from_class(from, 1); if (to == nullptr) return 0;
+                luaL::checkfunction(from, 2);
+
+                using namespace Engine;
+                TValue* value = lua::toraw(from, 2);
+                GCfunc* object = funcV(value);
+
+                if (object->l.ffid == FF_LUA) {
+                    std::string fname = ""; // TODO: placeholder for now
+                    std::string btcode = luaL::dump(from, 2);
+
+                    std::string err = Reflection::compile(to, btcode, fname);
+
+                    if (err.size() > 0) {
+                        luaL::error(to, (std::string() + "reflection transfer error: " + err).c_str());
+                        return 0;
+                    }
+
+                    lua_Debug ar;
+                    lua::pushvalue(from, 2);
+                    if (lua::getinfo(from, ">u", &ar) && ar.nups > 0) {
+                        for (int i = 1; i <= ar.nups; ++i) {
+                            const char* name = lua::getupvalue(from, 2, i);
+                            if (name == nullptr) break;
+                            int err = transfer(from, to, -1);
+                            lua::pop(from);
+                            if (err != 0) {
+                                return err;
+                            }
+                            lua::setupvalue(to, -2, i);
+                        }
+                    }
+                }
+                else {
+                    lua_Debug ar;
+                    size_t upvalues = 0;
+                    lua::pushvalue(from, 2);
+
+                    if (lua::getinfo(from, ">u", &ar) && ar.nups > 0) {
+                        upvalues = ar.nups;
+
+                        for (int i = 1; i <= upvalues; ++i) {
+                            const char* name = lua::getupvalue(from, 2, i);
+                            if (name == nullptr) break;
+                            int err = transfer(from, to, -1);
+                            lua::pop(from);
+                            if (err != 0) {
+                                lua::pop(to, i);
+                                return err;
+                            }
+                        }
+                    }
+
+                    lua::pushcclosure(to, object->c.f, upvalues);
+                }
+
+                return 0;
+            }
+
+            int pushtable(lua_State* from) {
+                lua_State* to = from_class(from, 1); if (to == nullptr) return 0;
+                luaL::checktable(from, 2);
+                Reflection::transfer_table(from, to, 2);
             }
 
             int pushvalue(lua_State* L)
@@ -2181,8 +2334,8 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
 
                 lua::pushcfunction(L, api); lua::setfield(L, -2, "api");
 
-                lua::pushcfunction(L, pushtransfer); lua::setfield(L, -2, "pushtransfer");
-                lua::pushcfunction(L, gettransfer); lua::setfield(L, -2, "gettransfer");
+                lua::pushcfunction(L, pushany); lua::setfield(L, -2, "pushany");
+                lua::pushcfunction(L, getany); lua::setfield(L, -2, "getany");
                 lua::pushcfunction(L, pop); lua::setfield(L, -2, "pop");
                 lua::pushcfunction(L, remove); lua::setfield(L, -2, "remove");
                 lua::pushcfunction(L, gettype); lua::setfield(L, -2, "gettype");
@@ -2217,6 +2370,8 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
                 lua::pushcfunction(L, pushboolean); lua::setfield(L, -2, "pushboolean");
                 lua::pushcfunction(L, pushnumber); lua::setfield(L, -2, "pushnumber");
                 lua::pushcfunction(L, pushstring); lua::setfield(L, -2, "pushstring");
+                lua::pushcfunction(L, pushfunction); lua::setfield(L, -2, "pushfunction");
+                lua::pushcfunction(L, pushtable); lua::setfield(L, -2, "pushtable");
                 lua::pushcfunction(L, pushvalue); lua::setfield(L, -2, "pushvalue");
 
                 lua::pushcfunction(L, isnil); lua::setfield(L, -2, "isnil");

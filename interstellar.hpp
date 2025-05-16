@@ -1176,6 +1176,7 @@ namespace INTERSTELLAR_NAMESPACE {
             extern void checktable(lua_State* L, int index);
             extern int newref(lua_State* L, int index);
             extern void rmref(lua_State* L, int reference);
+            extern std::string dump(lua_State* L, int index);
 
             extern int fetch(UMODULE hndle);
         }

@@ -1162,6 +1162,100 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
         return 1;
     }
 
+    lua_State* getthread(lua_State* L, int* is_thread)
+    {
+        if (lua::gettype(L, 1) == 8)
+        {
+            *is_thread = 1;
+            return lua::tothread(L, 1);
+        }
+
+        *is_thread = 0;
+        return L;
+    }
+
+    lua_State* getthread(lua_State* L, int stack, int* is_thread)
+    {
+        if (lua::gettype(L, stack) == 8)
+        {
+            *is_thread = 1;
+            return lua::tothread(L, stack);
+        }
+
+        *is_thread = 0;
+        return L;
+    }
+
+    void checkstack(lua_State* L, lua_State* L1, int n)
+    {
+        if (L != L1 && !lua::checkstack(L1, n))
+            luaL::error(L, "stack overflow");
+    }
+
+    int setlocal(lua_State* L)
+    {
+        int arg;
+        lua_State* L1 = getthread(L, &arg);
+        lua_Debug ar;
+        if (!lua::getstack(L1, luaL::checknumber(L, arg + 1), &ar))
+            return luaL::argerror(L, arg + 1, "level out of range");
+        luaL::checkany(L, arg + 3);
+        lua::settop(L, arg + 3);
+        checkstack(L, L1, 1);
+        lua::xmove(L, L1, 1);
+        lua::pushstring(L, lua::setlocal(L1, &ar, luaL::checknumber(L, arg + 2)));
+        return 1;
+    }
+
+    int getlocal(lua_State* L)
+    {
+        lua_State* L1;
+        int arg;
+
+        L1 = getthread(L, &arg);
+
+        lua_Debug ar;
+        if (!lua::getstack(L1, luaL::checknumber(L, arg + 1), &ar))
+            return luaL::argerror(L, arg + 1, "level out of range");
+
+        int idx = luaL::checknumber(L, arg + 2);
+        if (idx < 1) {
+            return 0;
+        }
+
+        const char* lname = lua::getlocal(L1, &ar, idx);
+        if (lname) {
+            lua::pushstring(L, lname);
+            lua::insert(L, -2);
+            return 2;
+        }
+
+        return 0;
+    }
+
+    int setupvalue(lua_State* L)
+    {
+        luaL::checkfunction(L, 1);
+        size_t upvalue = luaL::checknumber(L, 2);
+        luaL::checkany(L, 3);
+        lua::pushvalue(L, 3);
+        const char* name = lua::setupvalue(L, 1, upvalue);
+        if (name == nullptr) return 0;
+        lua::pushstring(L, name);
+        return 1;
+    }
+
+    int getupvalue(lua_State* L)
+    {
+        luaL::checkfunction(L, 1);
+        size_t upvalue = luaL::checknumber(L, 2);
+        const char* name = lua::getupvalue(L, 1, upvalue);
+        if (name == nullptr) return 0;
+        lua::pushstring(L, name);
+        lua::insert(L, -2);
+        return 2;
+    }
+
     int getconstant(lua_State* L)
     {
         using namespace Engine;
@@ -2204,7 +2298,27 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
     int env(lua_State* L) {
         lua::pushvalue(L, indexer::env);
         return 1;
-    } 
+    }
+
+    int dump(lua_State* L) {
+        if (!lua::isproto(L, 1) && !lua::islfunction(L, 1)) {
+            luaL::argerror(L, 1, "expected function or proto");
+        }
+
+        if (lua::isproto(L, 1)) {
+            using namespace Engine;
+            TValue* tv_target = lua::toraw(L, 1);
+            GCproto* proto_target = protoV(tv_target);
+            lua::pushlfunction(L, proto_target);
+            lua::pushcstring(L, luaL::dump(L, -1));
+            lua::remove(L, -2);
+        }
+        else {
+            lua::pushcstring(L, luaL::dump(L, 1));
+        }
+
+        return 1;
+    }
 
     void push(lua_State* L, UMODULE hndle)
     {
@@ -2215,6 +2329,9 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
         lua::remove(L, -2);
 
         lua::pushcfunction(L, _registry);
+        lua::setfield(L, -2, "getregistry");
+
+        lua::pushcfunction(L, _registry);
         lua::setfield(L, -2, "registry");
 
         lua::pushcfunction(L, global);
@@ -2222,6 +2339,9 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
 
         lua::pushcfunction(L, env);
         lua::setfield(L, -2, "env");
+
+        lua::pushcfunction(L, dump);
+        lua::setfield(L, -2, "dump");
 
         lua::pushcfunction(L, newcclosure);
         lua::setfield(L, -2, "newcclosure");
@@ -2310,6 +2430,18 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
 
         lua::pushcfunction(L, getbuiltin);
         lua::setfield(L, -2, "getbuiltin");
+
+        lua::pushcfunction(L, getlocal);
+        lua::setfield(L, -2, "getlocal");
+
+        lua::pushcfunction(L, setlocal);
+        lua::setfield(L, -2, "setlocal");
+
+        lua::pushcfunction(L, getupvalue);
+        lua::setfield(L, -2, "getupvalue");
+
+        lua::pushcfunction(L, setupvalue);
+        lua::setfield(L, -2, "setupvalue");
 
         lua::pushcfunction(L, getupvalues);
         lua::setfield(L, -2, "getupvalues");
