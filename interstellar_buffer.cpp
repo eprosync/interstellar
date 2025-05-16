@@ -910,8 +910,11 @@ namespace INTERSTELLAR_NAMESPACE::Buffer {
             lua::pushcfunction(L, buffer_consumers_int64);
             lua::setfield(L, -2, "int64");
 
-            lua::pushcfunction(L, buffer_consumers_uleb128);
+            lua::pushcfunction(L, buffer_consumers_uint64);
             lua::setfield(L, -2, "uint64");
+
+            lua::pushcfunction(L, buffer_consumers_uleb128);
+            lua::setfield(L, -2, "uleb128");
 
             // Conversions
 

@@ -1782,6 +1782,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
         return 1;
     }
 
+    // TODO: this was for debugging, we can make this more reliable than just a 0 < n < 100 range now...
     int typestack(lua_State* L)
     {
         int count = luaL::checknumber(L, 1);
