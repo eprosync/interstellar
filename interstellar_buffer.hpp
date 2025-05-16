@@ -141,6 +141,14 @@ namespace INTERSTELLAR_NAMESPACE::Buffer {
             return new Buffer(subbed);
         }
 
+        Buffer* concat(Buffer* other) {
+            std::vector<std::byte> result;
+            result.reserve(data.size() + other->data.size());
+            result.insert(result.end(), data.begin(), data.end());
+            result.insert(result.end(), other->data.begin(), other->data.end());
+            return new Buffer(result);
+        }
+
         // Arithmetic
 
         Buffer* arithmetic_add(const Buffer* other) { // CLA 8-bit infinite
@@ -375,6 +383,29 @@ namespace INTERSTELLAR_NAMESPACE::Buffer {
                 result = tmp;
             }
             return result;
+        }
+
+        // Comparators
+        bool is_equal(Buffer* other) {
+            return data == other->data;
+        }
+
+        bool is_notequal(Buffer* other) {
+            return data != other->data;
+        }
+
+        bool is_lessthan(Buffer* other) {
+            return std::lexicographical_compare(
+                data.begin(), data.end(),
+                other->data.begin(), other->data.end()
+            );
+        }
+
+        bool is_greaterthan(Buffer* other) {
+            return std::lexicographical_compare(
+                other->data.begin(), other->data.end(),
+                data.begin(), data.end()
+            );
         }
 
         // Bitwise

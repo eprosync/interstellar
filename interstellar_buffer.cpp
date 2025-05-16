@@ -10,7 +10,8 @@ namespace INTERSTELLAR_NAMESPACE::Buffer {
         if (lua::isnumber(L, 1)) {
             push_buffer(L, lua::tonumber(L, 1));
             return 1;
-        } else if (lua::isstring(L, 1)) {
+        }
+        else if (lua::isstring(L, 1)) {
             push_buffer(L, lua::tocstring(L, 1));
             return 1;
         }
@@ -101,6 +102,31 @@ namespace INTERSTELLAR_NAMESPACE::Buffer {
 
         Buffer* new_data = data->substitute(luaL::checknumber(L, 2), end);
         push_buffer(L, new_data);
+        return 1;
+    }
+
+    int buffer_concat(lua_State* L) {
+        Buffer* data = (Buffer*)Class::check(L, 1, "buffer");
+
+        Buffer* other = nullptr;
+        if (lua::isnumber(L, 2)) {
+            other = new Buffer(lua::tonumber(L, 2));
+        }
+        else if (lua::isstring(L, 2)) {
+            other = new Buffer(lua::tocstring(L, 2));
+        }
+        else if (Class::is(L, 2, "buffer")) {
+            other = new Buffer((Buffer*)Class::to(L, 2));
+        }
+
+        if (other == nullptr) {
+            luaL::argerror(L, 2, "expected string, number or buffer");
+            return 0;
+        }
+
+        Buffer* new_data = data->concat(other);
+        push_buffer(L, new_data);
+        delete other;
         return 1;
     }
 
@@ -216,6 +242,112 @@ namespace INTERSTELLAR_NAMESPACE::Buffer {
         luaL::argerror(L, 2, "expected string, number or buffer");
 
         return 0;
+    }
+
+    // Comparators
+
+    int buffer_equal(lua_State* L)
+    {
+        Buffer* data = (Buffer*)Class::check(L, 1, "buffer");
+
+        Buffer* other = nullptr;
+        if (lua::isnumber(L, 2)) {
+            other = new Buffer(lua::tonumber(L, 2));
+        }
+        else if (lua::isstring(L, 2)) {
+            other = new Buffer(lua::tocstring(L, 2));
+        }
+        else if (Class::is(L, 2, "buffer")) {
+            other = new Buffer((Buffer*)Class::to(L, 2));
+        }
+
+        if (other == nullptr) {
+            luaL::argerror(L, 2, "expected string, number or buffer");
+            return 0;
+        }
+
+        lua::pushboolean(L, data->is_equal(other));
+        delete other;
+
+        return 1;
+    }
+
+    int buffer_notequal(lua_State* L)
+    {
+        Buffer* data = (Buffer*)Class::check(L, 1, "buffer");
+
+        Buffer* other = nullptr;
+        if (lua::isnumber(L, 2)) {
+            other = new Buffer(lua::tonumber(L, 2));
+        }
+        else if (lua::isstring(L, 2)) {
+            other = new Buffer(lua::tocstring(L, 2));
+        }
+        else if (Class::is(L, 2, "buffer")) {
+            other = new Buffer((Buffer*)Class::to(L, 2));
+        }
+
+        if (other == nullptr) {
+            luaL::argerror(L, 2, "expected string, number or buffer");
+            return 0;
+        }
+
+        lua::pushboolean(L, data->is_notequal(other));
+        delete other;
+
+        return 1;
+    }
+
+    int buffer_lessthan(lua_State* L)
+    {
+        Buffer* data = (Buffer*)Class::check(L, 1, "buffer");
+
+        Buffer* other = nullptr;
+        if (lua::isnumber(L, 2)) {
+            other = new Buffer(lua::tonumber(L, 2));
+        }
+        else if (lua::isstring(L, 2)) {
+            other = new Buffer(lua::tocstring(L, 2));
+        }
+        else if (Class::is(L, 2, "buffer")) {
+            other = new Buffer((Buffer*)Class::to(L, 2));
+        }
+
+        if (other == nullptr) {
+            luaL::argerror(L, 2, "expected string, number or buffer");
+            return 0;
+        }
+
+        lua::pushboolean(L, data->is_lessthan(other));
+        delete other;
+
+        return 1;
+    }
+
+    int buffer_greaterthan(lua_State* L)
+    {
+        Buffer* data = (Buffer*)Class::check(L, 1, "buffer");
+
+        Buffer* other = nullptr;
+        if (lua::isnumber(L, 2)) {
+            other = new Buffer(lua::tonumber(L, 2));
+        }
+        else if (lua::isstring(L, 2)) {
+            other = new Buffer(lua::tocstring(L, 2));
+        }
+        else if (Class::is(L, 2, "buffer")) {
+            other = new Buffer((Buffer*)Class::to(L, 2));
+        }
+
+        if (other == nullptr) {
+            luaL::argerror(L, 2, "expected string, number or buffer");
+            return 0;
+        }
+
+        lua::pushboolean(L, data->is_greaterthan(other));
+        delete other;
+
+        return 1;
     }
 
     // Bitwise
@@ -553,6 +685,103 @@ namespace INTERSTELLAR_NAMESPACE::Buffer {
         return 1;
     }
 
+    int buffer__len(lua_State* L)
+    {
+        Buffer* data = (Buffer*)Class::check(L, 1, "buffer");
+        lua::pushnumber(L, data->size());
+        return 1;
+    }
+
+    int buffer__add(lua_State* L)
+    {
+        Buffer* a = (Buffer*)Class::check(L, 1, "buffer");
+        Buffer* b = (Buffer*)Class::check(L, 2, "buffer");
+        push_buffer(L, a->arithmetic_add(b));
+        return 1;
+    }
+
+    int buffer__sub(lua_State* L)
+    {
+        Buffer* a = (Buffer*)Class::check(L, 1, "buffer");
+        Buffer* b = (Buffer*)Class::check(L, 2, "buffer");
+        push_buffer(L, a->arithmetic_sub(b));
+        return 1;
+    }
+
+    int buffer__mul(lua_State* L)
+    {
+        Buffer* a = (Buffer*)Class::check(L, 1, "buffer");
+        Buffer* b = (Buffer*)Class::check(L, 2, "buffer");
+        push_buffer(L, a->arithmetic_mul(b));
+        return 1;
+    }
+
+    int buffer__div(lua_State* L)
+    {
+        Buffer* a = (Buffer*)Class::check(L, 1, "buffer");
+        Buffer* b = (Buffer*)Class::check(L, 2, "buffer");
+        push_buffer(L, a->arithmetic_div(b));
+        return 1;
+    }
+
+    int buffer__pow(lua_State* L)
+    {
+        Buffer* a = (Buffer*)Class::check(L, 1, "buffer");
+        Buffer* b = (Buffer*)Class::check(L, 2, "buffer");
+        push_buffer(L, a->arithmetic_pow(b->to_integer()));
+        return 1;
+    }
+
+    int buffer__concat(lua_State* L)
+    {
+        Buffer* a = (Buffer*)Class::check(L, 1, "buffer");
+
+        Buffer* b = nullptr;
+        if (lua::isnumber(L, 2)) {
+            b = new Buffer(lua::tonumber(L, 2));
+        }
+        else if (lua::isstring(L, 2)) {
+            b = new Buffer(lua::tocstring(L, 2));
+        }
+        else if (Class::is(L, 2, "buffer")) {
+            b = new Buffer((Buffer*)Class::to(L, 2));
+        }
+
+        if (b == nullptr) {
+            luaL::argerror(L, 2, "expected string, number or buffer");
+            return 0;
+        }
+
+        push_buffer(L, a->concat(b));
+        delete b;
+
+        return 1;
+    }
+
+    int buffer__eq(lua_State* L)
+    {
+        Buffer* a = (Buffer*)Class::check(L, 1, "buffer");
+        Buffer* b = (Buffer*)Class::check(L, 2, "buffer");
+        lua::pushboolean(L, a->is_equal(b));
+        return 1;
+    }
+
+    int buffer__lt(lua_State* L)
+    {
+        Buffer* a = (Buffer*)Class::check(L, 1, "buffer");
+        Buffer* b = (Buffer*)Class::check(L, 2, "buffer");
+        lua::pushboolean(L, a->is_lessthan(b));
+        return 1;
+    }
+
+    int buffer__le(lua_State* L)
+    {
+        Buffer* a = (Buffer*)Class::check(L, 1, "buffer");
+        Buffer* b = (Buffer*)Class::check(L, 2, "buffer");
+        lua::pushboolean(L, a->is_lessthan(b) || a->is_equal(b));
+        return 1;
+    }
+
     void push_buffer_internal(lua_State* L, Buffer* data)
     {
         if (!Class::existsbyname(L, "buffer")) {
@@ -592,6 +821,9 @@ namespace INTERSTELLAR_NAMESPACE::Buffer {
             lua::pushcfunction(L, buffer_substitute);
             lua::setfield(L, -2, "substitute");
 
+            lua::pushcfunction(L, buffer_concat);
+            lua::setfield(L, -2, "concat");
+
             // Arithmetic
 
             lua::pushcfunction(L, buffer_arithmetic_add);
@@ -608,6 +840,20 @@ namespace INTERSTELLAR_NAMESPACE::Buffer {
 
             lua::pushcfunction(L, buffer_arithmetic_pow);
             lua::setfield(L, -2, "pow");
+
+            // Comparators
+
+            lua::pushcfunction(L, buffer_equal);
+            lua::setfield(L, -2, "equal");
+
+            lua::pushcfunction(L, buffer_notequal);
+            lua::setfield(L, -2, "notequal");
+
+            lua::pushcfunction(L, buffer_lessthan);
+            lua::setfield(L, -2, "lessthan");
+
+            lua::pushcfunction(L, buffer_greaterthan);
+            lua::setfield(L, -2, "greaterthan");
 
             // Bitwise
             
@@ -686,7 +932,35 @@ namespace INTERSTELLAR_NAMESPACE::Buffer {
 
             lua::setfield(L, -2, "__index");
 
-            // TODO: Add basic operator overrides to metatable
+            lua::pushcfunction(L, buffer__add);
+            lua::setfield(L, -2, "__add");
+
+            lua::pushcfunction(L, buffer__sub);
+            lua::setfield(L, -2, "__sub");
+
+            lua::pushcfunction(L, buffer__mul);
+            lua::setfield(L, -2, "__mul");
+
+            lua::pushcfunction(L, buffer__div);
+            lua::setfield(L, -2, "__div");
+
+            lua::pushcfunction(L, buffer__pow);
+            lua::setfield(L, -2, "__pow");
+
+            lua::pushcfunction(L, buffer__eq);
+            lua::setfield(L, -2, "__eq");
+
+            lua::pushcfunction(L, buffer__concat);
+            lua::setfield(L, -2, "__concat");
+
+            lua::pushcfunction(L, buffer__eq);
+            lua::setfield(L, -2, "__eq");
+
+            lua::pushcfunction(L, buffer__lt);
+            lua::setfield(L, -2, "__lt");
+
+            lua::pushcfunction(L, buffer__le);
+            lua::setfield(L, -2, "__le");
 
             lua::pushcfunction(L, buffer__gc);
             lua::setfield(L, -2, "__gc");
