@@ -9,6 +9,7 @@
 #include <string>
 #include <regex>
 #include <mutex>
+#include <thread>
 
 #include <iostream>
 #include <vector>
