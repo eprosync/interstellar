@@ -1555,6 +1555,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
         extern void interstate(API::lua_State* L, API::lua_CFunction func, int count = 0);
     }
 
+    extern void push_state(API::lua_State* L, API::lua_State* state);
     extern void push(API::lua_State* L, UMODULE hndle);
     extern void api();
 }

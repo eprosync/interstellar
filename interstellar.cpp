@@ -849,6 +849,7 @@ namespace INTERSTELLAR_NAMESPACE {
     using namespace API;
 
     namespace Tracker {
+        Signal::Handle* signal = new Signal::Handle();
         std::map<std::string, lua_Closure> dispatch;
         std::map<uintptr_t, bool> internal;
         std::map<uintptr_t, std::string> mapping;
@@ -859,6 +860,16 @@ namespace INTERSTELLAR_NAMESPACE {
             uintptr_t id = (uintptr_t)L;
             auto found = std::find(tracker.begin(), tracker.end(), id);
             if (found != tracker.end()) {
+                // TODO: move this somewhere else...
+                std::string name = get_name(L);
+                for (auto& state : all()) {
+                    lua_State* S = state.second;
+                    if (S == L || !signal->has(S, "close")) continue;
+                    lua::pushcstring(S, name);
+                    Reflection::push_state(S, L);
+                    signal->fire(S, "close", 2);
+                }
+
                 tracker.erase(found);
                 internal.erase(id);
                 if (mapping.find(id) != mapping.end()) imapping.erase(mapping[id]);
@@ -967,6 +978,15 @@ namespace INTERSTELLAR_NAMESPACE {
             if (std::find(tracker.begin(), tracker.end(), id) != tracker.end()) return;
 
             tracker.push_back(id);
+
+            // TODO: move this somewhere else...
+            for (auto& state : all()) {
+                lua_State* S = state.second;
+                if (S == L || !signal->has(S, "open")) continue;
+                lua::pushcstring(S, name);
+                Reflection::push_state(S, L);
+                signal->fire(S, "open", 2);
+            }
         }
 
         void add(std::string name, lua_Closure callback)
@@ -2784,6 +2804,9 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
 
         lua::pushcfunction(L, CAPI::stackl);
         lua::setfield(L, -2, "stack");
+
+        Tracker::signal->api(L);
+        lua::setfield(L, -2, "listener");
     }
 
     void api() {
