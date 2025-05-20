@@ -1,11 +1,14 @@
 #include "interstellar_fs.hpp"
+#include "interstellar_buffer.hpp"
 #include <unordered_set>
+#include <map>
 #include <sstream>
 #include <ostream>
 #include <fstream>
 #include <cstring>
 #include <string>
 #include <regex>
+#include <mutex>
 
 #include <iostream>
 #include <vector>
@@ -38,6 +41,19 @@ const char* path_extension(const char* path) {
 // TODO: We need async FS operations...
 namespace INTERSTELLAR_NAMESPACE::FS {
     using namespace API;
+    std::mutex async_lock;
+
+    std::map<std::string, lua_FS_Error> on_error;
+
+    void add_error(std::string name, lua_FS_Error callback)
+    {
+        on_error.emplace(name, callback);
+    }
+
+    void remove_error(std::string name)
+    {
+        on_error.erase(name);
+    }
 
     std::string get_root() {
         #if defined(_WIN32)
@@ -265,6 +281,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return file_content;
     }
 
+    std::vector<std::tuple<uintptr_t, int, bool, std::string>> queue_read;
     int read(lua_State* L) {
         std::string file_path = luaL::checkcstring(L, 1);
         std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
@@ -277,6 +294,21 @@ namespace INTERSTELLAR_NAMESPACE::FS {
 
         if (!std::filesystem::exists(full_path.string().c_str())) {
             luaL::error(L, "fs.read, file does not exist");
+            return 0;
+        }
+
+        if (lua::isfunction(L, 2)) {
+            int reference = luaL::newref(L, 2);
+            uintptr_t id = Tracker::id(L);
+
+            // TODO: use luaL::trace for errors
+            std::thread([id, reference, full_path]() {
+                std::ifstream stream(full_path, std::ios_base::binary);
+                std::string file_content((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+                std::unique_lock<std::mutex> guard(async_lock);
+                queue_read.push_back(std::tuple(id, reference, true, file_content));
+                guard.unlock();
+            }).detach();
             return 0;
         }
 
@@ -310,6 +342,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return true;
     }
 
+    std::vector<std::tuple<uintptr_t, int, bool>> queue_write;
     int write(lua_State* L) {
         std::string file_path = luaL::checkcstring(L, 1);
         std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
@@ -320,7 +353,18 @@ namespace INTERSTELLAR_NAMESPACE::FS {
             return 0;
         }
 
-        std::string file_content = luaL::checkcstring(L, 2);
+        std::string file_content;
+        if (lua::isstring(L, 2)) {
+            file_content = lua::tocstring(L, 2);
+        }
+        else if (Class::is(L, 2, "buffer")) {
+            file_content = ((Buffer::Buffer*)Class::to(L, 2))->to_string();
+        }
+        else {
+            luaL::argerror(L, 2, "expected string or buffer");
+            return 0;
+        }
+
         std::string extension = path_extension(full_path.string().c_str());
 
         std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
@@ -332,14 +376,40 @@ namespace INTERSTELLAR_NAMESPACE::FS {
             }
         }
 
-        std::ofstream outfile(full_path, std::ios::out | std::ios::binary);
-        if (!outfile.is_open()) {
-            luaL::error(L, "fs.write, failed to open file for writing");
-            return 0;
-        }
+        if (lua::isfunction(L, 3) || (lua::isboolean(L, 3) && lua::toboolean(L, 3))) {
+            int reference = (lua::isboolean(L, 3) && lua::toboolean(L, 3)) ? -1 : luaL::newref(L, 3);
+            uintptr_t id = Tracker::id(L);
 
-        outfile.write(file_content.c_str(), file_content.size());
-        outfile.close();
+            // TODO: use luaL::trace for errors
+            std::thread([id, reference, full_path, file_content]() {
+                std::ofstream outfile(full_path, std::ios::out | std::ios::binary);
+
+                if (!outfile.is_open()) {
+                    std::unique_lock<std::mutex> guard(async_lock);
+                    queue_write.push_back(std::tuple(id, reference, false));
+                    guard.unlock();
+                    return 0;
+                }
+
+                outfile.write(file_content.c_str(), file_content.size());
+                outfile.close();
+
+                std::unique_lock<std::mutex> guard(async_lock);
+                queue_write.push_back(std::tuple(id, reference, true));
+                guard.unlock();
+            }).detach();
+        }
+        else {
+            std::ofstream outfile(full_path, std::ios::out | std::ios::binary);
+
+            if (!outfile.is_open()) {
+                luaL::error(L, "fs.write, failed to open file for writing");
+                return 0;
+            }
+
+            outfile.write(file_content.c_str(), file_content.size());
+            outfile.close();
+        }
 
         return 0;
     }
@@ -511,6 +581,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return true;
     }
 
+    std::vector<std::tuple<uintptr_t, int, bool>> queue_append;
     int append(lua_State* L) {
         std::string file_path = luaL::checkcstring(L, 1);
         std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
@@ -521,7 +592,18 @@ namespace INTERSTELLAR_NAMESPACE::FS {
             return 0;
         }
 
-        std::string file_content = luaL::checkcstring(L, 2);
+        std::string file_content;
+        if (lua::isstring(L, 2)) {
+            file_content = lua::tocstring(L, 2);
+        }
+        else if (Class::is(L, 2, "buffer")) {
+            file_content = ((Buffer::Buffer*)Class::to(L, 2))->to_string();
+        }
+        else {
+            luaL::argerror(L, 2, "expected string or buffer");
+            return 0;
+        }
+
         std::string extension = path_extension(full_path.string().c_str());
         std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
 
@@ -537,12 +619,140 @@ namespace INTERSTELLAR_NAMESPACE::FS {
             return 0;
         }
 
-        std::ofstream outFile;
-        outFile.open(full_path, std::ios_base::app | std::ios_base::binary);
-        outFile.write(file_content.c_str(), file_content.size());
-        outFile.close();
+        if (lua::isfunction(L, 3) || (lua::isboolean(L, 3) && lua::toboolean(L, 3))) {
+            int reference = (lua::isboolean(L, 3) && lua::toboolean(L, 3)) ? -1 : luaL::newref(L, 3);
+            uintptr_t id = Tracker::id(L);
 
-        return 0;
+            // TODO: use luaL::trace for errors
+            std::thread([id, reference, full_path, file_content]() {
+                std::ofstream outfile;
+                outfile.open(full_path, std::ios_base::app | std::ios_base::binary);
+
+                if (!outfile.is_open()) {
+                    std::unique_lock<std::mutex> guard(async_lock);
+                    queue_append.push_back(std::tuple(id, reference, false));
+                    guard.unlock();
+                    return 0;
+                }
+
+                outfile.write(file_content.c_str(), file_content.size());
+                outfile.close();
+
+                std::unique_lock<std::mutex> guard(async_lock);
+                queue_append.push_back(std::tuple(id, reference, true));
+                guard.unlock();
+            }).detach();
+
+            return 0;
+        }
+        else {
+            std::ofstream outfile;
+            outfile.open(full_path, std::ios_base::app | std::ios_base::binary);
+
+            if (!outfile.is_open()) {
+                lua::pushboolean(L, false);
+                return 1;
+            }
+
+            outfile.write(file_content.c_str(), file_content.size());
+            outfile.close();
+        }
+
+        lua::pushboolean(L, true);
+        return 1;
+    }
+
+    void runtime()
+    {
+        std::unique_lock<std::mutex> guard(async_lock);
+
+        if (queue_read.size() > 0) {
+            for (auto& result : queue_read) {
+                uintptr_t id = std::get<0>(result);
+                lua_State* L = Tracker::is((void*)id);
+                if (!Tracker::exists(L)) continue;
+                int reference = std::get<1>(result);
+                bool success = std::get<2>(result);
+                std::string data = std::get<3>(result);
+
+                if (!success) {
+                    for (auto const& handle : on_error) handle.second(L, "fs.read, failed to open file for reading");
+                }
+                else if (reference > 0) {
+                    lua::pushref(L, reference);
+                    lua::pushcstring(L, data);
+
+                    if (lua::tcall(L, 1, 0)) {
+                        std::string err = lua::tocstring(L, -1);
+                        lua::pop(L);
+                        for (auto const& handle : on_error) handle.second(L, err);
+                    }
+                }
+
+                if (reference > 0) {
+                    luaL::rmref(L, reference);
+                }
+            }
+            queue_read.clear();
+        }
+
+        if (queue_write.size() > 0) {
+            for (auto& result : queue_write) {
+                uintptr_t id = std::get<0>(result);
+                lua_State* L = Tracker::is((void*)id);
+                if (!Tracker::exists(L)) continue;
+                int reference = std::get<1>(result);
+                bool success = std::get<2>(result);
+
+                if (!success) {
+                    for (auto const& handle : on_error) handle.second(L, "fs.write, failed to open file for writing");
+                }
+                else if (reference > 0) {
+                    lua::pushref(L, reference);
+
+                    if (lua::tcall(L, 0, 0)) {
+                        std::string err = lua::tocstring(L, -1);
+                        lua::pop(L);
+                        for (auto const& handle : on_error) handle.second(L, err);
+                    }
+                }
+
+                if (reference > 0) {
+                    luaL::rmref(L, reference);
+                }
+            }
+            queue_write.clear();
+        }
+
+        if (queue_append.size() > 0) {
+            for (auto& result : queue_append) {
+                uintptr_t id = std::get<0>(result);
+                lua_State* L = Tracker::is((void*)id);
+                if (!Tracker::exists(L)) continue;
+                int reference = std::get<1>(result);
+                bool success = std::get<2>(result);
+
+                if (!success) {
+                    for (auto const& handle : on_error) handle.second(L, "fs.append, failed to open file for appending");
+                }
+                else if (reference > 0) {
+                    lua::pushref(L, reference);
+
+                    if (lua::tcall(L, 0, 0)) {
+                        std::string err = lua::tocstring(L, -1);
+                        lua::pop(L);
+                        for (auto const& handle : on_error) handle.second(L, err);
+                    }
+                }
+
+                if (reference > 0) {
+                    luaL::rmref(L, reference);
+                }
+            }
+            queue_write.clear();
+        }
+
+        guard.unlock();
     }
 
     void push(lua_State* L, UMODULE handle) {

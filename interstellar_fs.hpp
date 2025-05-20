@@ -4,8 +4,11 @@
 
 // Interstellar: File System
 // Allows for filesystem access (under a certain directory however)
-namespace INTERSTELLAR_NAMESPACE::FS
-{
+namespace INTERSTELLAR_NAMESPACE::FS {
+    typedef void (*lua_FS_Error) (API::lua_State* L, std::string error);
+    extern void add_error(std::string name, lua_FS_Error callback);
+    extern void remove_error(std::string name);
+
     template <typename... Args>
     std::string join(Args&&... args) {
         return (std::filesystem::path{} / ... / args).string();
@@ -32,6 +35,7 @@ namespace INTERSTELLAR_NAMESPACE::FS
     extern bool write(std::string file_path, std::string file_content);
     extern bool append(std::string file_path, std::string file_content);
 
+    extern void runtime();
     extern void push(API::lua_State* L, UMODULE hndle);
     extern void api(std::string root_path = "");
 }
