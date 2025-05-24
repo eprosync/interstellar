@@ -1,5 +1,9 @@
 #include "interstellar_table.hpp"
-#include <nlohmann/json.hpp>
+#include <rapidjson/document.h>
+#include <rapidjson/writer.h>
+#include <rapidjson/stringbuffer.h>
+#include <sstream>
+#include <optional>
 
 namespace INTERSTELLAR_NAMESPACE::Table {
     using namespace API;
@@ -36,8 +40,7 @@ namespace INTERSTELLAR_NAMESPACE::Table {
         return count == max_index;
     }
 
-    nlohmann::json lua_to_json(lua_State* L, int index, std::vector<Engine::GCobj*> references = std::vector<Engine::GCobj*>()) {
-        using namespace nlohmann;
+    rapidjson::Value lua_to_json(lua_State* L, int index, rapidjson::Document::AllocatorType& allocator, std::vector<Engine::GCobj*> references = {}) {
         using namespace Engine;
 
         TValue* tv = lua::toraw(L, index);
@@ -47,15 +50,15 @@ namespace INTERSTELLAR_NAMESPACE::Table {
             references.push_back(gcobj);
         }
         else {
-            return "[cyclic]";
+            return rapidjson::Value("[cyclic]", allocator);
         }
 
-        json builder = json::array();
-
         if (index < 0) index = lua::gettop(L) + index + 1;
-        
+
         size_t size;
         if (is_lua_array(L, index, size)) {
+            rapidjson::Value array(rapidjson::kArrayType);
+
             for (size_t i = 0; i < size; i++) {
                 lua::pushnumber(L, i + 1);
                 lua::gettable(L, -2);
@@ -66,38 +69,43 @@ namespace INTERSTELLAR_NAMESPACE::Table {
                     continue;
                 }
 
-                nlohmann::json value;
+                rapidjson::Value value;
                 switch (value_type) {
-                    case datatype::boolean:  value = lua::toboolean(L, -1); break;
-                    case datatype::number: {
-                        if (lua::isinteger(L, -1))
-                        {
-                            value = lua::tointeger(L, -1);
-                        }
-                        else {
-                            value = lua::tonumber(L, -1);
-                        }
-                        break;
+                case datatype::boolean:  value.SetBool(lua::toboolean(L, -1)); break;
+                case datatype::number:
+                    if (lua::isinteger(L, -1)) {
+                        value.SetInt64(lua::tointeger(L, -1));
                     }
-                    case datatype::string:          value = lua::tocstring(L, -1); break;
-                    case datatype::table:           value = lua_to_json(L, -1, references); break;
-                    case datatype::function:        value = lua::toastring(L, -1); break;
-                    case datatype::proto:           value = lua::toastring(L, -1); break;
-                    case datatype::lightuserdata:   value = lua::toastring(L, -1); break;
-                    case datatype::userdata:        value = lua::toastring(L, -1); break;
-                    default:                        value = "[unsupported]"; break;
+                    else {
+                        value.SetDouble(lua::tonumber(L, -1));
+                    }
+                    break;
+                case datatype::string:
+                    value.SetString(lua::tocstring(L, -1).c_str(), allocator);
+                    break;
+                case datatype::table:
+                    value = lua_to_json(L, -1, allocator, references);
+                    break;
+                case datatype::function:
+                case datatype::proto:
+                case datatype::lightuserdata:
+                case datatype::userdata:
+                    value.SetString(lua::toastring(L, -1).c_str(), allocator);
+                    break;
+                default:
+                    value.SetString("[unsupported]", allocator);
+                    break;
                 }
 
                 lua::pop(L);
-                builder[i] = value;
+                array.PushBack(value, allocator);
             }
 
             references.pop_back();
-
-            return builder;
+            return array;
         }
 
-        builder = json::object();
+        rapidjson::Value object(rapidjson::kObjectType);
 
         lua::pushnil(L);
         while (lua::next(L, index)) {
@@ -105,13 +113,13 @@ namespace INTERSTELLAR_NAMESPACE::Table {
             int value_type = lua::gettype(L, -1);
 
             std::string key = "[unsupported]";
-            std::optional<int> index;
+            std::optional<int> numeric_key;
 
             if (key_type == datatype::string) {
                 key = lua::tocstring(L, -2);
             }
             else if (key_type == datatype::number) {
-                index = static_cast<int>(lua::tonumber(L, -2));
+                numeric_key = static_cast<int>(lua::tonumber(L, -2));
             }
             else {
                 lua::pop(L);
@@ -123,91 +131,89 @@ namespace INTERSTELLAR_NAMESPACE::Table {
                 continue;
             }
 
-            nlohmann::json value;
+            rapidjson::Value value;
             switch (value_type) {
-                case datatype::boolean:  value = lua::toboolean(L, -1); break;
-                case datatype::number: {
-                    if (lua::isinteger(L, -1))
-                    {
-                        value = lua::tointeger(L, -1);
-                    }
-                    else {
-                        value = lua::tonumber(L, -1);
-                    }
-                    break;
+            case datatype::boolean:  value.SetBool(lua::toboolean(L, -1)); break;
+            case datatype::number:
+                if (lua::isinteger(L, -1)) {
+                    value.SetInt64(lua::tointeger(L, -1));
                 }
-                case datatype::string:   value = lua::tocstring(L, -1); break;
-                case datatype::table:    value = lua_to_json(L, -1, references); break;
-                default:                 value = "[unsupported]"; break;
+                else {
+                    value.SetDouble(lua::tonumber(L, -1));
+                }
+                break;
+            case datatype::string:
+                value.SetString(lua::tocstring(L, -1).c_str(), allocator);
+                break;
+            case datatype::table:
+                value = lua_to_json(L, -1, allocator, references);
+                break;
+            case datatype::function:
+            case datatype::proto:
+            case datatype::lightuserdata:
+            case datatype::userdata:
+                value.SetString(lua::toastring(L, -1).c_str(), allocator);
+                break;
+            default:
+                value.SetString("[unsupported]", allocator);
+                break;
             }
 
             lua::pop(L);
 
-            if (index.has_value()) {
-                builder[std::to_string(index.value())] = value;
+            rapidjson::Value rkey;
+            if (numeric_key.has_value()) {
+                std::string skey = std::to_string(numeric_key.value());
+                rkey.SetString(skey.c_str(), allocator);
             }
             else {
-                builder[key] = value;
+                rkey.SetString(key.c_str(), allocator);
             }
+
+            object.AddMember(rkey, value, allocator);
         }
 
         references.pop_back();
-
-        return builder;
+        return object;
     }
 
-    void json_to_lua(lua_State* L, const nlohmann::json& value) {
-        using nlohmann::json;
+    void json_to_lua(lua_State* L, const rapidjson::Value& value) {
+        using namespace rapidjson;
 
-        switch (value.type()) {
-        case json::value_t::null:
+        if (value.IsNull()) {
             lua::pushnil(L);
-            break;
-
-        case json::value_t::boolean:
-            lua::pushboolean(L, value.get<bool>());
-            break;
-
-        case json::value_t::number_integer:
-            lua::pushnumber(L, value.get<lua_Number>());
-            break;
-
-        case json::value_t::number_unsigned:
-            lua::pushnumber(L, static_cast<lua_Number>(value.get<uint64_t>()));
-            break;
-
-        case json::value_t::number_float:
-            lua::pushnumber(L, value.get<lua_Number>());
-            break;
-
-        case json::value_t::string:
-            lua::pushstring(L, value.get<std::string>().c_str());
-            break;
-
-        case json::value_t::array: {
+        }
+        else if (value.IsBool()) {
+            lua::pushboolean(L, value.GetBool());
+        }
+        else if (value.IsInt64() || value.IsUint64()) {
+            lua::pushnumber(L, static_cast<lua_Number>(value.GetInt64()));
+        }
+        else if (value.IsDouble()) {
+            lua::pushnumber(L, value.GetDouble());
+        }
+        else if (value.IsString()) {
+            lua::pushstring(L, value.GetString());
+        }
+        else if (value.IsArray()) {
             lua::newtable(L);
-            int i = 0;
-            for (const auto& element : value) {
-                lua::pushnumber(L, ++i);
+            int i = 1;
+            for (auto& element : value.GetArray()) {
+                lua::pushnumber(L, i++);
                 json_to_lua(L, element);
                 lua::settable(L, -3);
             }
-            break;
         }
-
-        case json::value_t::object: {
+        else if (value.IsObject()) {
             lua::newtable(L);
-            for (const auto& [key, val] : value.items()) {
-                lua::pushcstring(L, key);
-                json_to_lua(L, val);
+            for (auto itr = value.MemberBegin(); itr != value.MemberEnd(); ++itr) {
+                lua::pushcstring(L, itr->name.GetString());
+                json_to_lua(L, itr->value);
                 lua::settable(L, -3);
             }
-            break;
         }
-
-        default:
+        else {
             lua::pushcstring(L, "[unsupported json type]");
-            break;
         }
     }
 
@@ -222,8 +228,14 @@ namespace INTERSTELLAR_NAMESPACE::Table {
     int tojson(lua_State* L)
     {
         luaL::checktable(L, 1);
-        nlohmann::json data = lua_to_json(L, 1);
-        lua::pushcstring(L, data.dump());
+        rapidjson::Document doc;
+        rapidjson::Value val = lua_to_json(L, 1, doc.GetAllocator());
+
+        rapidjson::StringBuffer buffer;
+        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+        val.Accept(writer);
+
+        lua::pushcstring(L, buffer.GetString());
         return 1;
     }
 
@@ -231,13 +243,12 @@ namespace INTERSTELLAR_NAMESPACE::Table {
     {
         std::string data = luaL::checkcstring(L, 1);
 
-        nlohmann::json builder;
-        try {
-            builder = nlohmann::json::parse(data);
-        }
-        catch (const nlohmann::json::parse_error& e) {
+        rapidjson::Document builder;
+        builder.Parse(data.c_str());
+
+        if (builder.HasParseError()) {
             std::stringstream o;
-            o << "JSON parse error at byte " << e.byte << ": " << e.what() << std::endl;
+            o << "JSON parse error: " << builder.GetParseError() << std::endl;
             luaL::error(L, o.str().c_str());
             return 0;
         }
