@@ -5,50 +5,63 @@
 #include <sstream>
 #include <optional>
 #include <algorithm>
+#include <unordered_set>
 
 namespace INTERSTELLAR_NAMESPACE::Table {
     using namespace API;
 
+    #define noderef(r)	(mref((r), Engine::Node))
+    #define nextnode(n)	(mref((n)->next, Engine::Node))
+
     bool is_lua_array(lua_State* L, int index, size_t& size) {
         if (!lua::istable(L, index)) return false;
+        using namespace Engine;
 
-        if (index < 0) index = lua::gettop(L) + index + 1;
-
-        size_t count = 0;
-        size_t max_index = 0;
-
-        lua::pushnil(L);
-        while (lua::next(L, index)) {
-            if (lua::gettype(L, -2) != datatype::number || !lua::isnumber(L, -2)) {
-                lua::pop(L, 1);
-                return false;
-            }
-
-            lua_Number k = lua::tonumber(L, -2);
-            if (k < 1) {
-                lua::pop(L, 1);
-                return false;
-            }
-
-            if (k > max_index) max_index = static_cast<int>(k);
-            ++count;
-
-            lua::pop(L, 1);
+        lua::pushvalue(L, index);
+        lua::pushnumber(L, 0);
+        lua::gettable(L, -2);
+        
+        if (!lua::isnil(L, -1)) {
+            lua::pop(L, 2);
+            return false;
         }
 
-        size = max_index;
+        lua::pop(L, 2);
 
-        return count == max_index;
+        TValue* tv = lua::toraw(L, index);
+        GCtab* t = (GCtab*)gcV(tv);
+
+        bool gap = false;
+        size = 0;
+        for (uint32_t i = 1; i < t->asize; ++i) {
+            if (tvisnil(&tvref(t->array)[i])) {
+                gap = true;
+            }
+            else if (gap) {
+                return false;
+            } else {
+                size++;
+            }
+        }
+
+        for (uint32_t i = 0; i <= t->hmask; i++) {
+            Node* n = &noderef(t->node)[i];
+            if (!tvisnil(&n->val)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
-    rapidjson::Value lua_to_json(lua_State* L, int index, rapidjson::Document::AllocatorType& allocator, std::vector<Engine::GCobj*> references = {}) {
+    rapidjson::Value lua_to_json(lua_State* L, int index, rapidjson::Document::AllocatorType& allocator, std::unordered_set<Engine::GCobj*> cyclic = {}) {
         using namespace Engine;
 
         TValue* tv = lua::toraw(L, index);
         GCobj* gcobj = gcV(tv);
 
-        if (std::find(references.begin(), references.end(), gcobj) == references.end()) {
-            references.push_back(gcobj);
+        if (cyclic.find(gcobj) == cyclic.end()) {
+            cyclic.emplace(gcobj);
         }
         else {
             return rapidjson::Value("[cyclic]", allocator);
@@ -85,7 +98,7 @@ namespace INTERSTELLAR_NAMESPACE::Table {
                     value.SetString(lua::tocstring(L, -1).c_str(), allocator);
                     break;
                 case datatype::table:
-                    value = lua_to_json(L, -1, allocator, references);
+                    value = lua_to_json(L, -1, allocator, cyclic);
                     break;
                 case datatype::function:
                 case datatype::proto:
@@ -102,7 +115,8 @@ namespace INTERSTELLAR_NAMESPACE::Table {
                 array.PushBack(value, allocator);
             }
 
-            references.pop_back();
+            cyclic.erase(gcobj);
+
             return array;
         }
 
@@ -147,7 +161,7 @@ namespace INTERSTELLAR_NAMESPACE::Table {
                 value.SetString(lua::tocstring(L, -1).c_str(), allocator);
                 break;
             case datatype::table:
-                value = lua_to_json(L, -1, allocator, references);
+                value = lua_to_json(L, -1, allocator, cyclic);
                 break;
             case datatype::function:
             case datatype::proto:
@@ -174,7 +188,8 @@ namespace INTERSTELLAR_NAMESPACE::Table {
             object.AddMember(rkey, value, allocator);
         }
 
-        references.pop_back();
+        cyclic.erase(gcobj);
+
         return object;
     }
 
@@ -222,7 +237,11 @@ namespace INTERSTELLAR_NAMESPACE::Table {
     {
         luaL::checktable(L, 1);
         size_t size;
-        lua::pushboolean(L, is_lua_array(L, 1, size));
+        if (is_lua_array(L, 1, size)) {
+            lua::pushnumber(L, size);
+            return 1;
+        }
+        lua::pushboolean(L, false);
         return 1;
     }
 
