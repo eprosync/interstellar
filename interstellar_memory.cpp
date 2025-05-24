@@ -1,4 +1,5 @@
 #include "interstellar_memory.hpp"
+#include "interstellar_os.hpp"
 
 #if defined(_WIN32)
 #include <psapi.h>
@@ -1541,7 +1542,10 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     void api()
     {
         address_meta = std::map<uintptr_t, int>();
-        Tracker::add("memory", cleanup);
-        Reflection::add("memory", push);
+        if (OS::ARGV::exists("memory")) {
+            Tracker::add("memory", cleanup);
+            Reflection::add("memory", push);
+            std::cout << "[WARNING] Interstellar has memory.* enabled, you have been warned." << std::endl;
+        }
     }
 }
