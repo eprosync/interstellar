@@ -226,6 +226,21 @@ namespace INTERSTELLAR_NAMESPACE::OS {
             return _flags.find(name) != _flags.end();
         }
 
+        int lexists(lua_State* L)
+        {
+            std::string arg = luaL::checkcstring(L, 1);
+            std::string res;
+            
+            if (exists(arg, &res)) {
+                lua::pushboolean(L, true);
+                lua::pushcstring(L, res);
+                return 2;
+            }
+
+            lua::pushboolean(L, false);
+            return 1;
+        }
+
         std::vector<std::string> positional()
         {
             return parse_args().positional;
@@ -268,6 +283,9 @@ namespace INTERSTELLAR_NAMESPACE::OS {
 
         lua::pushcfunction(L, ARGV::loptions);
         lua::setfield(L, -2, "options");
+
+        lua::pushcfunction(L, ARGV::lexists);
+        lua::setfield(L, -2, "exists");
 
         lua::pushcfunction(L, ARGV::lpositional);
         lua::setfield(L, -2, "positional");

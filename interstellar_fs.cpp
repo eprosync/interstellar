@@ -809,6 +809,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
     }
 
     void api(std::string root) {
+        on_error = std::map<std::string, lua_FS_Error>();
         root_path = (root.size() > 0 ? root : get_root());
         Reflection::add("fs", push);
     }
