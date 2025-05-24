@@ -13,6 +13,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <string_view>
 #include <signal.h>
