@@ -4,6 +4,7 @@
 #include <rapidjson/stringbuffer.h>
 #include <sstream>
 #include <optional>
+#include <algorithm>
 
 namespace INTERSTELLAR_NAMESPACE::Table {
     using namespace API;
