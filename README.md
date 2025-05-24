@@ -36,3 +36,4 @@ Keep in mind that I do use vcpkg for simplifying the build process on my end, th
 - bzip2
 - bxzstr
 - restinio
+- nlohmann-json

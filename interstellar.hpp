@@ -1016,7 +1016,7 @@ namespace INTERSTELLAR_NAMESPACE {
     namespace API
     {
         // Internal Types
-        typedef ptrdiff_t* lua_Integer;
+        typedef ptrdiff_t lua_Integer;
         typedef double lua_Number;
 
         namespace datatype {
@@ -1257,6 +1257,7 @@ namespace INTERSTELLAR_NAMESPACE {
                 typedef int (*status)(lua_State*);
                 typedef int (*toboolean)(lua_State*, int);
                 typedef lua_CFunction (*tocfunction)(lua_State*, int);
+                typedef bool (*isinteger)(lua_State*, int);
                 typedef lua_Integer (*tointeger)(lua_State*, int);
                 typedef lua_Integer (*tointegerx)(lua_State*, int, int*);
                 typedef const char* (*tolstring)(lua_State*, int, size_t*);
@@ -1361,6 +1362,7 @@ namespace INTERSTELLAR_NAMESPACE {
             extern type::xmove xmove;
             extern type::yield yield;
             
+            extern std::string toastring(lua_State* L, int index);
             extern int tcall(lua_State* L, int nargs, int nret);
             extern std::string tocstring(lua_State* L, int index);
             extern void pushcstring(lua_State* L, std::string str);
@@ -1375,7 +1377,8 @@ namespace INTERSTELLAR_NAMESPACE {
             void setcfield(lua_State* L, int index, std::string str);
             void setrfield(lua_State* L, int index, const char* str);
             void setcrfield(lua_State* L, int index, std::string str);
-
+            
+            extern bool isinteger(lua_State* L, int index);
             extern bool istype(lua_State* L, int index, int type);
             extern bool isnil(lua_State* L, int index);
             extern bool isboolean(lua_State* L, int index);

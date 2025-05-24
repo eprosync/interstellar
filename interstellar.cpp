@@ -473,6 +473,53 @@ namespace INTERSTELLAR_NAMESPACE {
                 return 0;
             }
 
+            std::string toastring(lua_State* L, int index)
+            {
+                lua::pushvalue(L, index);
+                lua::pushvalue(L, indexer::global);
+                lua::getfield(L, -1, "tostring");
+                lua::remove(L, -2);
+                lua::insert(L, -2);
+
+                if (lua::isfunction(L, -2)) {
+                    if (lua::pcall(L, 1, 1, 0)) {
+                        std::string err = lua::tocstring(L, -1);
+                        lua::pop(L);
+                        return err;
+                    }
+
+                    if (lua::isstring(L, -1)) {
+                        std::string res = lua::tocstring(L, -1);
+                        lua::pop(L);
+                        return res;
+                    }
+
+                    lua::pop(L);
+
+                    return "";
+                }
+
+                lua::pop(L, 2);
+
+                return "";
+            }
+
+            bool isinteger(lua_State* L, int index)
+            {
+                if (!lua::isnumber(L, index)) return false;
+                lua_Number num = lua::tonumber(L, index);
+
+                // 2^53 - 1 (for doubles)
+                constexpr lua_Number maximum = 9007199254740991.0;
+                constexpr lua_Number minimum = -9007199254740991.0;
+
+                if (num < minimum || num > maximum)
+                    return false;
+
+                lua_Number intpart;
+                return std::modf(num, &intpart) == 0.0;
+            }
+
             int trace(lua_State* L)
             {
                 std::string msg = lua::tocstring(L, 1);
