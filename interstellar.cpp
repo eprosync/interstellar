@@ -1026,7 +1026,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_root(lua_State* L)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->root;
@@ -1036,7 +1035,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_root(void* L)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->root;
@@ -1046,7 +1044,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_root(uintptr_t L)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->root;
@@ -1056,7 +1053,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_root(std::string name)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(name);
             if (tracker != nullptr) {
                 return tracker->root;
@@ -1066,7 +1062,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_internal(lua_State* L)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->internal;
@@ -1076,7 +1071,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_internal(void* L)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->internal;
@@ -1086,7 +1080,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_internal(uintptr_t L)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->internal;
@@ -1096,7 +1089,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_internal(std::string name)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(name);
             if (tracker != nullptr) {
                 return tracker->internal;
@@ -1106,7 +1098,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_threaded(lua_State* L)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->threaded;
@@ -1116,7 +1107,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_threaded(void* L)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->threaded;
@@ -1126,7 +1116,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_threaded(uintptr_t L)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->threaded;
@@ -1136,7 +1125,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_threaded(std::string name)
         {
-            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(name);
             if (tracker != nullptr) {
                 return tracker->threaded;
