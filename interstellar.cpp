@@ -905,10 +905,10 @@ namespace INTERSTELLAR_NAMESPACE {
         std::unordered_map<uintptr_t, state_tracking*> mapping;
         std::unordered_map<std::string, state_tracking*> imapping;
         static std::shared_ptr<std::mutex> global_mtx;
-        static std::unique_lock<std::mutex> global_lock;
+        static std::shared_ptr<std::unique_lock<std::mutex>> global_lock;
         std::atomic<unsigned int> expecting;
 
-        std::unique_lock<std::mutex>& runtime_lock()
+        std::shared_ptr<std::unique_lock<std::mutex>> runtime_lock()
         {
             return global_lock;
         }
@@ -926,9 +926,9 @@ namespace INTERSTELLAR_NAMESPACE {
 
         void runtime()
         {
-            global_lock.unlock();
+            global_lock->unlock();
             while (expecting > 0) {}
-            global_lock.lock();
+            global_lock->lock();
         }
 
         inline uintptr_t id(lua_State* L) {
@@ -1376,9 +1376,9 @@ namespace INTERSTELLAR_NAMESPACE {
             cross_trace = std::unordered_map<uintptr_t, unsigned int>();
             cross_locks = std::unordered_map<uintptr_t, std::unique_ptr<std::unique_lock<std::mutex>>>();
             global_mtx = std::make_shared<std::mutex>();
-            global_lock = std::unique_lock<std::mutex>(*global_mtx);
-            global_lock.unlock();
-            global_lock.lock();
+            global_lock = std::make_shared<std::unique_lock<std::mutex>>(*global_mtx);
+            global_lock->unlock();
+            global_lock->lock();
         }
     }
 
