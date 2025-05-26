@@ -39,10 +39,16 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
         {
             for (auto& result : queue) {
                 uintptr_t id = std::get<0>(result);
-                lua_State* L = Tracker::is((void*)id);
-                if (!Tracker::exists(L)) continue;
+                lua_State* L = Tracker::is_state(id);
+                if (L == nullptr) continue;
                 int reference = std::get<1>(result);
                 std::string data = std::get<2>(result);
+
+                std::unique_lock<std::mutex> guard;
+                bool threaded = Tracker::is_threaded(L);
+                if (threaded) {
+                    guard = Tracker::lock(L);
+                }
 
                 lua::pushref(L, reference);
                 lua::pushcstring(L, data);
@@ -54,6 +60,8 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
                 }
 
                 luaL::rmref(L, reference);
+
+                if (guard.owns_lock()) guard.unlock(); guard.release();
             }
         }
         queue.clear();
@@ -77,12 +85,12 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
                     queue.push_back(std::tuple((uintptr_t)L, reference, compressed_stream.str()));
                 }
                 catch (const std::exception& e) {
-                    if (Tracker::exists(L)) {
+                    if (Tracker::is_state(L) != nullptr) {
                         queue.push_back(std::tuple((uintptr_t)L, reference, ""));
                     }
                 }
                 catch (...) {
-                    if (Tracker::exists(L)) {
+                    if (Tracker::is_state(L) != nullptr) {
                         queue.push_back(std::tuple((uintptr_t)L, reference, ""));
                     }
                 }
@@ -126,12 +134,12 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
                     queue.push_back(std::tuple((uintptr_t)L, reference, compressed_stream.str()));
                 }
                 catch (const std::exception& e) {
-                    if (Tracker::exists(L)) {
+                    if (Tracker::is_state(L) != nullptr) {
                         queue.push_back(std::tuple((uintptr_t)L, reference, ""));
                     }
                 }
                 catch (...) {
-                    if (Tracker::exists(L)) {
+                    if (Tracker::is_state(L) != nullptr) {
                         queue.push_back(std::tuple((uintptr_t)L, reference, ""));
                     }
                 }
@@ -175,12 +183,12 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
                     queue.push_back(std::tuple((uintptr_t)L, reference, compressed_stream.str()));
                 }
                 catch (const std::exception& e) {
-                    if (Tracker::exists(L)) {
+                    if (Tracker::is_state(L) != nullptr) {
                         queue.push_back(std::tuple((uintptr_t)L, reference, ""));
                     }
                 }
                 catch (...) {
-                    if (Tracker::exists(L)) {
+                    if (Tracker::is_state(L) != nullptr) {
                         queue.push_back(std::tuple((uintptr_t)L, reference, ""));
                     }
                 }
@@ -224,12 +232,12 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
                     queue.push_back(std::tuple((uintptr_t)L, reference, compressed_stream.str()));
                 }
                 catch (const std::exception& e) {
-                    if (Tracker::exists(L)) {
+                    if (Tracker::is_state(L) != nullptr) {
                         queue.push_back(std::tuple((uintptr_t)L, reference, ""));
                     }
                 }
                 catch (...) {
-                    if (Tracker::exists(L)) {
+                    if (Tracker::is_state(L) != nullptr) {
                         queue.push_back(std::tuple((uintptr_t)L, reference, ""));
                     }
                 }
@@ -274,12 +282,12 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
                     queue.push_back(std::tuple((uintptr_t)L, reference, decompressed_stream.str()));
                 }
                 catch (const std::exception& e) {
-                    if (Tracker::exists(L)) {
+                    if (Tracker::is_state(L) != nullptr) {
                         queue.push_back(std::tuple((uintptr_t)L, reference, ""));
                     }
                 }
                 catch (...) {
-                    if (Tracker::exists(L)) {
+                    if (Tracker::is_state(L) != nullptr) {
                         queue.push_back(std::tuple((uintptr_t)L, reference, ""));
                     }
                 }

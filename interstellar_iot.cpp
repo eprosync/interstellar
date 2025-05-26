@@ -645,7 +645,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         void removel(std::string name, std::string identity) {
             listener->removel(this->L, name, identity);
         }
-    private:
+
         lua_State* L;
         Signal::Handle* listener;
     };
@@ -2329,8 +2329,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         {
             for (auto& result : http_progress) {
                 uintptr_t id = std::get<0>(result);
-                lua_State* L = Tracker::is((void*)id);
-                if (!Tracker::exists(L)) continue;
+                lua_State* L = Tracker::is_state(id);
+                if (L == nullptr) continue;
                 int reference = std::get<1>(result);
                 std::string url = std::get<2>(result);
                 cpr::cpr_off_t downloadTotal = std::get<3>(result);
@@ -2398,10 +2398,16 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         {
             for (auto& result : http_responses) {
                 uintptr_t id = std::get<0>(result);
-                lua_State* L = Tracker::is((void*)id);
-                if (!Tracker::exists(L)) continue;
+                lua_State* L = Tracker::is_state(id);
+                if (L == nullptr) continue;
                 int reference = std::get<1>(result);
                 cpr::Response response = std::get<2>(result);
+
+                std::unique_lock<std::mutex> guard;
+                bool threaded = Tracker::is_threaded(L);
+                if (threaded) {
+                    guard = Tracker::lock(L);
+                }
 
                 lua::pushref(L, reference);
                 luaL::rmref(L, reference);
@@ -2435,6 +2441,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     for (auto const& handle : on_error) handle.second(L, "http - " + response.url.str(), err);
                 }
 
+                if (guard.owns_lock()) guard.unlock(); guard.release();
+
                 std::lock_guard<std::mutex> progress_cancel_lock_guard(progress_cancel_lock);
                 if (!progress_cancel.empty()) {
                     for (auto& cancel : progress_cancel) {
@@ -2453,10 +2461,16 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         {
             for (auto& result : stream_responses) {
                 uintptr_t id = std::get<0>(result);
-                lua_State* L = Tracker::is((void*)id);
-                if (!Tracker::exists(L)) continue;
+                lua_State* L = Tracker::is_state(id);
+                if (L == nullptr) continue;
                 int reference = std::get<1>(result);
                 cpr::Response response = std::get<2>(result);
+
+                std::unique_lock<std::mutex> guard;
+                bool threaded = Tracker::is_threaded(L);
+                if (threaded) {
+                    guard = Tracker::lock(L);
+                }
 
                 lua::pushref(L, reference);
 
@@ -2525,6 +2539,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 if (response.status_code != 100) {
                     luaL::rmref(L, reference);
 
+                    if (guard.owns_lock()) guard.unlock(); guard.release();
+
                     std::lock_guard<std::mutex> progress_cancel_lock_guard(progress_cancel_lock);
                     if (!progress_cancel.empty()) {
                         for (auto& cancel : progress_cancel) {
@@ -2542,6 +2558,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                             }
                         }
                     }
+                } else {
+                    if (guard.owns_lock()) guard.unlock(); guard.release();
                 }
             }
             stream_responses.clear();
@@ -2550,23 +2568,41 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
         if (sockets.size() > 0) {
             for (auto& socket_entry : sockets) {
-                lua_State* L = Tracker::is(socket_entry.first);
-                if (!Tracker::exists(L)) continue;
+                lua_State* L = Tracker::is_state(socket_entry.first);
+                if (L == nullptr) continue;
+
+                std::unique_lock<std::mutex> guard;
+                bool threaded = Tracker::is_threaded(L);
+                if (threaded) {
+                    guard = Tracker::lock(L);
+                }
+
                 auto& handlers = socket_entry.second;
                 for (auto& socket : handlers) {
                     socket->dethreader();
                 }
+
+                if (guard.owns_lock()) guard.unlock(); guard.release();
             }
         }
 
         if (serves.size() > 0) {
             for (auto& serve_entry : serves) {
-                lua_State* L = Tracker::is(serve_entry.first);
-                if (!Tracker::exists(L)) continue;
+                lua_State* L = Tracker::is_state(serve_entry.first);
+                if (L == nullptr) continue;
+
+                std::unique_lock<std::mutex> guard;
+                bool threaded = Tracker::is_threaded(L);
+                if (threaded) {
+                    guard = Tracker::lock(L);
+                }
+
                 auto& handlers = serve_entry.second;
                 for (auto& serve : handlers) {
                     serve.second->sync();
                 }
+
+                if (guard.owns_lock()) guard.unlock(); guard.release();
             }
         }
     }

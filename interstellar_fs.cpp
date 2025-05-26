@@ -670,11 +670,17 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         if (queue_read.size() > 0) {
             for (auto& result : queue_read) {
                 uintptr_t id = std::get<0>(result);
-                lua_State* L = Tracker::is((void*)id);
-                if (!Tracker::exists(L)) continue;
+                lua_State* L = Tracker::is_state(id);
+                if (L == nullptr) continue;
                 int reference = std::get<1>(result);
                 bool success = std::get<2>(result);
                 std::string data = std::get<3>(result);
+
+                std::unique_lock<std::mutex> guard;
+                bool threaded = Tracker::is_threaded(L);
+                if (threaded) {
+                    guard = Tracker::lock(L);
+                }
 
                 if (!success) {
                     for (auto const& handle : on_error) handle.second(L, "fs.read, failed to open file for reading");
@@ -693,6 +699,8 @@ namespace INTERSTELLAR_NAMESPACE::FS {
                 if (reference > 0) {
                     luaL::rmref(L, reference);
                 }
+
+                if (guard.owns_lock()) guard.unlock(); guard.release();
             }
             queue_read.clear();
         }
@@ -700,10 +708,16 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         if (queue_write.size() > 0) {
             for (auto& result : queue_write) {
                 uintptr_t id = std::get<0>(result);
-                lua_State* L = Tracker::is((void*)id);
-                if (!Tracker::exists(L)) continue;
+                lua_State* L = Tracker::is_state(id);
+                if (L == nullptr) continue;
                 int reference = std::get<1>(result);
                 bool success = std::get<2>(result);
+
+                std::unique_lock<std::mutex> guard;
+                bool threaded = Tracker::is_threaded(L);
+                if (threaded) {
+                    guard = Tracker::lock(L);
+                }
 
                 if (!success) {
                     for (auto const& handle : on_error) handle.second(L, "fs.write, failed to open file for writing");
@@ -721,6 +735,8 @@ namespace INTERSTELLAR_NAMESPACE::FS {
                 if (reference > 0) {
                     luaL::rmref(L, reference);
                 }
+
+                if (guard.owns_lock()) guard.unlock(); guard.release();
             }
             queue_write.clear();
         }
@@ -728,10 +744,16 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         if (queue_append.size() > 0) {
             for (auto& result : queue_append) {
                 uintptr_t id = std::get<0>(result);
-                lua_State* L = Tracker::is((void*)id);
-                if (!Tracker::exists(L)) continue;
+                lua_State* L = Tracker::is_state(id);
+                if (L == nullptr) continue;
                 int reference = std::get<1>(result);
                 bool success = std::get<2>(result);
+
+                std::unique_lock<std::mutex> guard;
+                bool threaded = Tracker::is_threaded(L);
+                if (threaded) {
+                    guard = Tracker::lock(L);
+                }
 
                 if (!success) {
                     for (auto const& handle : on_error) handle.second(L, "fs.append, failed to open file for appending");
@@ -749,6 +771,8 @@ namespace INTERSTELLAR_NAMESPACE::FS {
                 if (reference > 0) {
                     luaL::rmref(L, reference);
                 }
+
+                if (guard.owns_lock()) guard.unlock(); guard.release();
             }
             queue_write.clear();
         }

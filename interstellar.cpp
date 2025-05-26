@@ -10,6 +10,8 @@
 #include "interstellar_buffer.hpp"
 #include <vector>
 #include <map>
+#include <unordered_map>
+#include <chrono>
 
 #include <vector>
 #include <algorithm>
@@ -898,31 +900,456 @@ namespace INTERSTELLAR_NAMESPACE {
 
     namespace Tracker {
         Signal::Handle* signal = new Signal::Handle();
-        std::map<std::string, lua_Closure> dispatch;
-        std::map<uintptr_t, bool> internal;
-        std::map<uintptr_t, std::string> mapping;
-        std::map<std::string, uintptr_t> imapping;
-        std::vector<uintptr_t> tracker;
 
-        void pre_remove(lua_State* L) {
+        std::unordered_map<std::string, lua_Closure> dispatch;
+        std::unordered_map<uintptr_t, state_tracking*> mapping;
+        std::unordered_map<std::string, state_tracking*> imapping;
+        static std::shared_ptr<std::mutex> global_mtx;
+        static std::unique_lock<std::mutex> global_lock;
+        std::atomic<unsigned int> expecting;
+
+        std::unique_lock<std::mutex>& runtime_lock()
+        {
+            return global_lock;
+        }
+
+        void increment()
+        {
+            expecting++;
+        }
+
+        void decrement()
+        {
+            if (expecting == 0) return;
+            expecting--;
+        }
+
+        void runtime()
+        {
+            global_lock.unlock();
+            while (expecting > 0) {}
+            global_lock.lock();
+        }
+
+        inline uintptr_t id(lua_State* L) {
+            return (uintptr_t)L;
+        }
+
+        state_tracking* get_tracker(lua_State* L)
+        {
             uintptr_t id = (uintptr_t)L;
-            auto found = std::find(tracker.begin(), tracker.end(), id);
-            if (found != tracker.end()) {
-                // TODO: move this somewhere else...
-                std::string name = get_name(L);
-                for (auto& state : all()) {
-                    lua_State* S = state.second;
-                    if (S == L || !signal->has(S, "close")) continue;
-                    lua::pushcstring(S, name);
-                    Reflection::push_state(S, L);
-                    signal->fire(S, "close", 2);
+            auto res = mapping.find(id);
+            if (res == mapping.end()) return nullptr;
+            return res->second;
+        }
+
+        state_tracking* get_tracker(void* L)
+        {
+            uintptr_t id = (uintptr_t)L;
+            auto res = mapping.find(id);
+            if (res == mapping.end()) return nullptr;
+            return res->second;
+        }
+
+        state_tracking* get_tracker(uintptr_t L)
+        {
+            auto res = mapping.find(L);
+            if (res == mapping.end()) return nullptr;
+            return res->second;
+        }
+
+        state_tracking* get_tracker(std::string name)
+        {
+            auto res = imapping.find(name);
+            if (res == imapping.end()) return nullptr;
+            return res->second;
+        }
+
+        lua_State* is_state(lua_State* L) {
+            uintptr_t id = (uintptr_t)L;
+            if (mapping.find(id) == mapping.end()) return nullptr;
+            return (lua_State*)L;
+        }
+
+        lua_State* is_state(uintptr_t L) {
+            if (mapping.find(L) == mapping.end()) return nullptr;
+            return (lua_State*)L;
+        }
+
+        lua_State* is_state(void* L) {
+            uintptr_t id = (uintptr_t)L;
+            if (mapping.find(id) == mapping.end()) return nullptr;
+            return (lua_State*)L;
+        }
+
+        lua_State* is_state(std::string name) {
+            auto res = imapping.find(name);
+            if (res == imapping.end()) return nullptr;
+            return res->second->state.self;
+        }
+
+        lua_State* get_root()
+        {
+            for (auto entry : mapping) {
+                if (entry.second->root) {
+                    return entry.second->state.self;
+                }
+            }
+            return nullptr;
+        }
+
+        bool is_root(lua_State* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr) {
+                return tracker->root;
+            }
+            return false;
+        }
+
+        bool is_root(void* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr) {
+                return tracker->root;
+            }
+            return false;
+        }
+
+        bool is_root(uintptr_t L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr) {
+                return tracker->root;
+            }
+            return false;
+        }
+
+        bool is_root(std::string name)
+        {
+            state_tracking* tracker = get_tracker(name);
+            if (tracker != nullptr) {
+                return tracker->root;
+            }
+            return false;
+        }
+
+        bool is_internal(lua_State* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr) {
+                return tracker->internal;
+            }
+            return false;
+        }
+
+        bool is_internal(void* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr) {
+                return tracker->internal;
+            }
+            return false;
+        }
+
+        bool is_internal(uintptr_t L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr) {
+                return tracker->internal;
+            }
+            return false;
+        }
+
+        bool is_internal(std::string name)
+        {
+            state_tracking* tracker = get_tracker(name);
+            if (tracker != nullptr) {
+                return tracker->internal;
+            }
+            return false;
+        }
+
+        bool is_threaded(lua_State* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr) {
+                return tracker->threaded;
+            }
+            return false;
+        }
+
+        bool is_threaded(void* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr) {
+                return tracker->threaded;
+            }
+            return false;
+        }
+
+        bool is_threaded(uintptr_t L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr) {
+                return tracker->threaded;
+            }
+            return false;
+        }
+
+        bool is_threaded(std::string name)
+        {
+            state_tracking* tracker = get_tracker(name);
+            if (tracker != nullptr) {
+                return tracker->threaded;
+            }
+            return false;
+        }
+
+        bool should_lock(lua_State* target, lua_State* source)
+        {
+            return target != source && (Tracker::is_threaded(target) || Tracker::is_threaded(target) != Tracker::is_threaded(source));
+        }
+
+        std::string get_name(lua_State* L)
+        {
+            uintptr_t id = (uintptr_t)L;
+            auto res = mapping.find(id);
+            if (res != mapping.end()) {
+                return res->second->name;
+            }
+            return "";
+        }
+
+        std::vector<std::pair<std::string, lua_State*>> get_states() {
+            std::vector<std::pair<std::string, lua_State*>> list;
+
+            for (auto object : mapping) {
+                std::string name = object.second->name;
+                lua_State* L = object.second->state.self;
+                list.push_back(std::pair<std::string, lua_State*>(name, L));
+            }
+
+            return list;
+        }
+
+        // since cross-states should be able to talk back and forth
+        std::mutex global_cross_mutex;
+        std::unordered_map<uintptr_t, unsigned int> cross_trace;
+        std::unordered_map<uintptr_t, std::unique_ptr<std::unique_lock<std::mutex>>> cross_locks;
+
+        void cross_lock(lua_State* target, lua_State* source)
+        {
+            std::scoped_lock lock(global_cross_mutex);
+
+            auto target_tracker = get_tracker(target);
+            auto target_ptr = target_tracker->state.pointer;
+            auto source_ptr = get_tracker(source)->state.pointer;
+
+            if (cross_trace[target_ptr] == 0) {
+                auto mutex = target_tracker->mutex;
+                auto guard = std::make_unique<std::unique_lock<std::mutex>>(*mutex);
+                cross_locks[target_ptr] = std::move(guard);
+            }
+
+            cross_trace[target_ptr]++;
+            cross_trace[source_ptr]++;
+        }
+
+        void cross_unlock(lua_State* target, lua_State* source)
+        {
+            std::scoped_lock lock(global_cross_mutex);
+
+            auto target_ptr = get_tracker(target)->state.pointer;
+            auto source_ptr = get_tracker(source)->state.pointer;
+
+            if (--cross_trace[target_ptr] == 0) {
+                cross_locks.erase(target_ptr);
+            }
+
+            if (--cross_trace[source_ptr] == 0) {
+                cross_locks.erase(source_ptr);
+            }
+        }
+
+
+        std::unique_lock<std::mutex> lock(lua_State* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker == nullptr) {
+                return std::unique_lock<std::mutex>();
+            }
+            return std::unique_lock<std::mutex>(*tracker->mutex);
+        }
+
+        std::unique_lock<std::mutex> lock(void* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker == nullptr) {
+                return std::unique_lock<std::mutex>();
+            }
+            return std::unique_lock<std::mutex>(*tracker->mutex);
+        }
+
+        std::unique_lock<std::mutex> lock(uintptr_t L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker == nullptr) {
+                return std::unique_lock<std::mutex>();
+            }
+            return std::unique_lock<std::mutex>(*tracker->mutex);
+        }
+
+        std::unique_lock<std::mutex> lock(std::string name)
+        {
+            state_tracking* tracker = get_tracker(name);
+            if (tracker == nullptr) {
+                return std::unique_lock<std::mutex>();
+            }
+            return std::unique_lock<std::mutex>(*tracker->mutex);
+        }
+
+        void listen(lua_State* L, std::string name, bool internal)
+        {
+            uintptr_t id = (uintptr_t)L;
+
+            if (name.size() > 0) {
+                state_tracking* tracker = new state_tracking();
+                tracker->threaded = false;
+                tracker->internal = internal;
+                tracker->name = name;
+                tracker->state.self = L;
+                tracker->mutex = global_mtx;
+
+                mapping.emplace(id, tracker);
+                imapping.emplace(name, tracker);
+
+                if (mapping.size() == 1) {
+                    tracker->root = true;
                 }
 
-                tracker.erase(found);
-                internal.erase(id);
-                if (mapping.find(id) != mapping.end()) imapping.erase(mapping[id]);
-                mapping.erase(id);
+                for (auto& state : Tracker::get_states()) {
+                    lua_State* S = state.second;
+
+                    if (S == L) continue;
+
+                    std::unique_lock<std::mutex> guard;
+                    bool threaded = Tracker::is_threaded(S);
+                    if (threaded) {
+                        guard = Tracker::lock(S);
+                    }
+
+                    if (!signal->has(S, "open")) {
+                        if (guard.owns_lock()) guard.unlock(); guard.release();
+                        continue;
+                    };
+
+                    lua::pushcstring(S, name);
+                    Reflection::push_state(S, L);
+                    signal->fire(S, "open", 2);
+                    if (guard.owns_lock()) guard.unlock(); guard.release();
+                }
             }
+        }
+
+        void listen(lua_State* L, std::string name, std::shared_ptr<std::mutex> mtx, bool internal)
+        {
+            uintptr_t id = (uintptr_t)L;
+
+            if (name.size() > 0) {
+                state_tracking* tracker = new state_tracking();
+                tracker->threaded = true;
+                tracker->internal = internal;
+                tracker->name = name;
+                tracker->state.self = L;
+                tracker->mutex = mtx;
+
+                mapping.emplace(id, tracker);
+                imapping.emplace(name, tracker);
+
+                if (mapping.size() == 1) {
+                    tracker->root = true;
+                }
+
+                for (auto& state : Tracker::get_states()) {
+                    lua_State* S = state.second;
+
+                    if (S == L) continue;
+
+                    std::unique_lock<std::mutex> guard;
+                    bool threaded = Tracker::is_threaded(S);
+                    if (threaded) {
+                        guard = Tracker::lock(S);
+                    }
+
+                    if (!signal->has(S, "open")) {
+                        if (guard.owns_lock()) guard.unlock(); guard.release();
+                        continue;
+                    };
+
+                    lua::pushcstring(S, name);
+                    Reflection::push_state(S, L);
+                    signal->fire(S, "open", 2);
+                    if (guard.owns_lock()) guard.unlock(); guard.release();
+                }
+            }
+        }
+
+        inline void _destruct(state_tracking* tracker)
+        {
+            if (tracker == nullptr) return;
+
+            std::string name = tracker->name;
+            lua_State* L = tracker->state.self;
+            for (auto& state : Tracker::get_states()) {
+                lua_State* S = state.second;
+
+                if (S == L) continue;
+
+                std::unique_lock<std::mutex> guard;
+                bool threaded = Tracker::is_threaded(S);
+                if (threaded) {
+                    guard = Tracker::lock(S);
+                }
+
+                if (!signal->has(S, "open")) {
+                    if (guard.owns_lock()) guard.unlock(); guard.release();
+                    continue;
+                };
+
+                lua::pushcstring(S, name);
+                Reflection::push_state(S, L);
+                signal->fire(S, "open", 2);
+                if (guard.owns_lock()) guard.unlock(); guard.release();
+            }
+
+            mapping.erase(tracker->state.pointer);
+            imapping.erase(tracker->name);
+            delete tracker;
+        }
+
+        void destroy(lua_State* L)
+        {
+            _destruct(get_tracker(L));
+        }
+
+        void destroy(uintptr_t L)
+        {
+            _destruct(get_tracker(L));
+        }
+
+        void destroy(void* L)
+        {
+            _destruct(get_tracker(L));
+        }
+
+        void destroy(std::string name)
+        {
+            _destruct(get_tracker(name));
+        }
+
+        void pre_remove(lua_State* L) {
+            destroy(L);
             for (auto& [key, callback] : dispatch) {
                 callback(L);
             }
@@ -930,111 +1357,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         void post_remove(lua_State* L) {
             Class::cleanup(L);
-        }
-
-        // TODO: hook this so that programmers won't have to depend on their own versions
-        lua::type::close lua_close_o;
-        #ifdef __linux
-        void __attribute__((fastcall)) lua_close_hk(lua_State* L) {
-            pre_remove(L);
-            lua_close_o(L);
-            post_remove(L);
-        }
-        #else
-        void __fastcall lua_close_hk(lua_State* L) {
-            pre_remove(L);
-            lua_close_o(L);
-            post_remove(L);
-        }
-        #endif
-
-        bool exists(lua_State* L) {
-            if (!L || L == nullptr) return false;
-            return std::find(tracker.begin(), tracker.end(), (uintptr_t)L) != tracker.end();
-        }
-
-        lua_State* get(std::string name)
-        {
-            if (imapping.find(name) != imapping.end()) {
-                return (lua_State*)imapping[name];
-            }
-            return nullptr;
-        }
-
-        std::vector<std::pair<std::string, lua_State*>> all() {
-            std::vector<std::pair<std::string, lua_State*>> list;
-
-            for (uintptr_t object : tracker) {
-                lua_State* L = (lua_State*)object;
-                std::string name = get_name(L);
-                list.push_back(std::pair<std::string, lua_State*>(name, L));
-            }
-
-            return list;
-        }
-
-        uintptr_t id(lua_State* L) {
-            return (uintptr_t)L;
-        }
-
-        lua_State* is(uintptr_t L) {
-            if (std::find(tracker.begin(), tracker.end(), L) == tracker.end()) return nullptr;
-            return (lua_State*)L;
-        }
-
-        lua_State* is(void* L) {
-            uintptr_t id = (uintptr_t)L;
-            if (std::find(tracker.begin(), tracker.end(), id) == tracker.end()) return nullptr;
-            return (lua_State*)L;
-        }
-
-        bool is_internal(lua_State* L)
-        {
-            return internal[(uintptr_t)L];
-        }
-
-        std::string get_name(lua_State* L)
-        {
-            uintptr_t id = (uintptr_t)L;
-            if (mapping.find(id) != mapping.end()) {
-                return mapping[id];
-            }
-            return "";
-        }
-
-        static std::string root = "";
-
-        bool is_root(lua_State* L)
-        {
-            return get_name(L) == root;
-        }
-
-        void listen(lua_State* L, std::string name, bool internalize)
-        {
-            uintptr_t id = (uintptr_t)L;
-
-            if (name.size() > 0) {
-                mapping.emplace(id, name);
-                imapping.emplace(name, id);
-                internal.emplace(id, internalize);
-
-                if (root.size() == 0) {
-                    root = name;
-                }
-            }
-
-            if (std::find(tracker.begin(), tracker.end(), id) != tracker.end()) return;
-
-            tracker.push_back(id);
-
-            // TODO: move this somewhere else...
-            for (auto& state : all()) {
-                lua_State* S = state.second;
-                if (S == L || !signal->has(S, "open")) continue;
-                lua::pushcstring(S, name);
-                Reflection::push_state(S, L);
-                signal->fire(S, "open", 2);
-            }
         }
 
         void add(std::string name, lua_Closure callback)
@@ -1049,11 +1371,12 @@ namespace INTERSTELLAR_NAMESPACE {
 
         inline void init()
         {
-            dispatch = std::map<std::string, Tracker::lua_Closure>();
-            internal = std::map<uintptr_t, bool>();
-            mapping = std::map<uintptr_t, std::string>();
-            imapping = std::map<std::string, uintptr_t>();
-            tracker = std::vector<uintptr_t>();
+            mapping = std::unordered_map<uintptr_t, state_tracking*>();
+            imapping = std::unordered_map<std::string, state_tracking*>();
+            global_mtx = std::make_shared<std::mutex>();
+            global_lock = std::unique_lock<std::mutex>(*global_mtx);
+            global_lock.unlock();
+            global_lock.lock();
         }
     }
 
@@ -1662,14 +1985,10 @@ namespace INTERSTELLAR_NAMESPACE {
             return "";
         }
 
-        void assign(std::string name, lua_State* L)
+        Signal::Handle* tasker = new Signal::Handle();
+        lua_State* open(std::string name, bool internal, bool threaded)
         {
-            Tracker::listen(L, name);
-        }
-
-        lua_State* open(std::string name, bool internal)
-        {
-            lua_State* exists = Tracker::get(name);
+            lua_State* exists = Tracker::is_state(name);
             if (exists != nullptr) {
                 return exists;
             }
@@ -1680,21 +1999,42 @@ namespace INTERSTELLAR_NAMESPACE {
             luaL::openlibs(L);
             lua::gc(L, 1, -1);
 
-            Tracker::listen(L, name, internal);
+            if (threaded) {
+                lua::pushvalue(L, indexer::global);
+                tasker->api(L);
+                lua::setfield(L, -2, "task");
+                lua::pop(L);
+
+                Tracker::listen(L, name, std::make_shared<std::mutex>(), internal);
+
+                std::thread([L]() {
+                    while (Tracker::is_state(L) != nullptr) {
+                        auto lock = Tracker::lock(L);
+                        tasker->fire(L, "think");
+                        if (lock.owns_lock()) lock.unlock(); lock.release();
+                    }
+                }).detach();
+            }
+            else {
+                Tracker::listen(L, name, internal);
+            }
 
             return L;
         }
 
-        lua_State* get(std::string name)
-        {
-            return Tracker::get(name);
-        }
-
         void close(lua_State* L)
         {
-            Tracker::pre_remove(L);
-            lua::close(L);
-            Tracker::post_remove(L);
+            if (Tracker::is_threaded(L)) {
+                auto lock = Tracker::lock(L);
+                Tracker::pre_remove(L);
+                lua::close(L);
+                Tracker::post_remove(L);
+                if (lock.owns_lock()) lock.unlock(); lock.release();
+            } else {
+                Tracker::pre_remove(L);
+                lua::close(L);
+                Tracker::post_remove(L);
+            }
         }
 
         std::vector<std::pair<std::string, lua_CFunction>> functions;
@@ -1768,7 +2108,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
     using namespace API;
 
     int lua_state__tostring(lua_State* L) {
-        lua_State* state = Tracker::is(Class::check(L, 1, "lua.state"));
+        lua_State* state = Tracker::is_state(Class::check(L, 1, "lua.state"));
         if (state == nullptr) {
             luaL::error(L, "invalid lua instance");
             return 0;
@@ -1780,7 +2120,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
     }
 
     int lua_state_execute(lua_State* L) {
-        lua_State* state = Tracker::is(Class::check(L, 1, "lua.state"));
+        lua_State* state = Tracker::is_state(Class::check(L, 1, "lua.state"));
         if (state == nullptr) {
             luaL::error(L, "invalid lua instance");
             return 0;
@@ -1794,7 +2134,18 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
             return 0;
         }
 
-        std::string err = execute(state, source, name);
+        std::string err;
+        if (Tracker::should_lock(state, L)) {
+            bool should_notify = !Tracker::is_threaded(state);
+            if (should_notify) Tracker::increment();
+            Tracker::cross_lock(state, L);
+            err = execute(state, source, name);
+            Tracker::cross_unlock(state, L);
+            if (should_notify) Tracker::decrement();
+        }
+        else {
+            err = execute(state, source, name);
+        }
 
         if (err.size() > 0) {
             lua::pushcstring(L, err);
@@ -1805,7 +2156,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
     }
 
     int lua_state_compile(lua_State* L) {
-        lua_State* state = Tracker::is(Class::check(L, 1, "lua.state"));
+        lua_State* state = Tracker::is_state(Class::check(L, 1, "lua.state"));
         if (state == nullptr) {
             luaL::error(L, "invalid lua instance");
             return 0;
@@ -1819,7 +2170,18 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
             return 0;
         }
 
-        std::string err = compile(state, source, name);
+        std::string err;
+        if (Tracker::should_lock(state, L)) {
+            bool should_notify = !Tracker::is_threaded(state);
+            if (should_notify) Tracker::increment();
+            Tracker::cross_lock(state, L);
+            err = compile(state, source, name);
+            Tracker::cross_unlock(state, L);
+            if (should_notify) Tracker::decrement();
+        }
+        else {
+            err = compile(state, source, name);
+        }
 
         if (err.size() > 0) {
             lua::pushcstring(L, err);
@@ -1847,7 +2209,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
         }
 
         lua_State* from_class(lua_State* L, int index) {
-            lua_State* target = Tracker::is(Class::check(L, 1, "lua.state"));
+            lua_State* target = Tracker::is_state(Class::check(L, 1, "lua.state"));
             if (target == nullptr) { luaL::error(L, "invalid lua instance"); return nullptr; }
             if (target == L) { luaL::error(L, "cannot interact with the same lua instance!"); return nullptr; }
             return target;
@@ -2527,7 +2889,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
         {
             luaL::checktype(L, 1, datatype::function);
 
-            lua_State* state_target = Tracker::is(Class::check(L, 2, "lua.state"));
+            lua_State* state_target = Tracker::is_state(Class::check(L, 2, "lua.state"));
             if (state_target == nullptr) {
                 luaL::error(L, "invalid lua instance");
                 return 0;
@@ -2547,13 +2909,34 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
 
             int top = lua::gettop(L);
 
-            lua::pushcfunction(state_target, stack_handler);
-            if (lua::pcall(state_target, 0, 0, 0)) {
-                size_t size = 0;
-                std::string err = lua::tocstring(state_target, -1);
-                lua::pop(state_target);
-                luaL::error(L, err.c_str());
-                return 0;
+            if (Tracker::should_lock(state_target, L)) {
+                bool should_notify = !Tracker::is_threaded(state_target);
+                if (should_notify) Tracker::increment();
+                Tracker::cross_lock(state_target, L);
+
+                lua::pushcfunction(state_target, stack_handler);
+                if (lua::pcall(state_target, 0, 0, 0)) {
+                    size_t size = 0;
+                    std::string err = lua::tocstring(state_target, -1);
+                    lua::pop(state_target);
+                    Tracker::cross_unlock(state_target, L);
+                    if (should_notify) Tracker::decrement();
+                    luaL::error(L, err.c_str());
+                    return 0;
+                }
+                
+                Tracker::cross_unlock(state_target, L);
+                if (should_notify) Tracker::decrement();
+            }
+            else {
+                lua::pushcfunction(state_target, stack_handler);
+                if (lua::pcall(state_target, 0, 0, 0)) {
+                    size_t size = 0;
+                    std::string err = lua::tocstring(state_target, -1);
+                    lua::pop(state_target);
+                    luaL::error(L, err.c_str());
+                    return 0;
+                }
             }
 
             return lua::gettop(L) - top;
@@ -2563,7 +2946,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
         {
             luaL::checktype(L, 2, datatype::function);
 
-            lua_State* state_target = Tracker::is(Class::check(L, 1, "lua.state"));
+            lua_State* state_target = Tracker::is_state(Class::check(L, 1, "lua.state"));
             if (state_target == nullptr) {
                 luaL::error(L, "invalid lua instance");
                 return 0;
@@ -2583,13 +2966,34 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
 
             int top = lua::gettop(L);
 
-            lua::pushcfunction(state_target, stack_handler);
-            if (lua::pcall(state_target, 0, 0, 0)) {
-                size_t size = 0;
-                std::string err = lua::tocstring(state_target, -1);
-                lua::pop(state_target);
-                luaL::error(L, err.c_str());
-                return 0;
+            if (Tracker::should_lock(state_target, L)) {
+                bool should_notify = !Tracker::is_threaded(state_target);
+                if (should_notify) Tracker::increment();
+                Tracker::cross_lock(state_target, L);
+
+                lua::pushcfunction(state_target, stack_handler);
+                if (lua::pcall(state_target, 0, 0, 0)) {
+                    size_t size = 0;
+                    std::string err = lua::tocstring(state_target, -1);
+                    lua::pop(state_target);
+                    Tracker::cross_unlock(state_target, L);
+                    if (should_notify) Tracker::decrement();
+                    luaL::error(L, err.c_str());
+                    return 0;
+                }
+
+                Tracker::cross_unlock(state_target, L);
+                if (should_notify) Tracker::decrement();
+            }
+            else {
+                lua::pushcfunction(state_target, stack_handler);
+                if (lua::pcall(state_target, 0, 0, 0)) {
+                    size_t size = 0;
+                    std::string err = lua::tocstring(state_target, -1);
+                    lua::pop(state_target);
+                    luaL::error(L, err.c_str());
+                    return 0;
+                }
             }
 
             return lua::gettop(L) - top;
@@ -2646,7 +3050,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
 
         lua_State* state_target = L;
         if (!lua::isnil(L, 3)) {
-            lua_State* target = Tracker::is(Class::check(L, 3, "lua.state"));
+            lua_State* target = Tracker::is_state(Class::check(L, 3, "lua.state"));
             if (target == nullptr) {
                 luaL::error(L, "invalid lua instance");
                 return 0;
@@ -2660,7 +3064,19 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
             state_target = target;
         }
 
-        std::string err = execute(state_target, source, name);
+        std::string err;
+        
+        if (Tracker::should_lock(state_target, L)) {
+            bool should_notify = !Tracker::is_threaded(state_target);
+            if (should_notify) Tracker::increment();
+            Tracker::cross_lock(state_target, L);
+            err = execute(state_target, source, name);
+            Tracker::cross_unlock(state_target, L);
+            if (should_notify) Tracker::decrement();
+        }
+        else {
+            err = execute(state_target, source, name);
+        }
 
         if (err.size() > 0) {
             lua::pushcstring(L, err);
@@ -2673,7 +3089,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
     int getl(lua_State* L)
     {
         std::string name = luaL::checkcstring(L, 1);
-        lua_State* N = Reflection::get(name);
+        lua_State* N = Tracker::is_state(name);
         if (N == nullptr) {
             return 0;
         }
@@ -2684,7 +3100,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
     int all_l(lua_State* L)
     {
         lua::newtable(L);
-        auto list = Tracker::all();
+        auto list = Tracker::get_states();
 
         for (auto& pair : list) {
             push_state(L, pair.second);
@@ -2708,7 +3124,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
 
     int name_l(lua_State* L)
     {
-        lua_State* target = Tracker::is(Class::check(L, 1, "lua.state"));
+        lua_State* target = Tracker::is_state(Class::check(L, 1, "lua.state"));
         if (target == nullptr) {
             luaL::error(L, "invalid lua instance");
             return 0;
@@ -2752,9 +3168,11 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
             name = "unknown";
         }
 
-        line = "[" + name + "] " + line;
+        line = "[" + name + "] " + line + "\n";
 
-        lua_State* target = Tracker::get(Tracker::root);
+        printf(line.c_str());
+
+        /*lua_State* target = Tracker::get_root();
         if (target == nullptr) return 0;
 
         lua::pushvalue(target, indexer::global);
@@ -2767,7 +3185,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
         }
         else {
             lua::pop(target);
-        }
+        }*/
 
         return 0;
     }
@@ -2782,19 +3200,34 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
             return 0;
         }
 
-        lua_State* exists = Reflection::get(name);
+        lua_State* exists = Tracker::is_state(name);
 
         if (exists != nullptr) {
             push_state(L, exists);
             return 1;
         }
 
-        lua_State* state = Reflection::open(name);
+        lua_State* state;
 
-        lua::pushvalue(state, indexer::global);
-        lua::getfield(state, -1, "tostring");
-        lua::pushcclosure(state, printl, 1);
-        lua::setfield(state, -2, "print");
+        if (lua::isboolean(L, 2) && lua::toboolean(L, 2)) {
+            state = Reflection::open(name, false, true);
+
+            auto lock = Tracker::lock(state);
+
+            lua::pushvalue(state, indexer::global);
+            lua::getfield(state, -1, "tostring");
+            lua::pushcclosure(state, printl, 1);
+            lua::setfield(state, -2, "print");
+
+            if (lock.owns_lock()) lock.unlock(); lock.release();
+        }
+        else {
+            state = Reflection::open(name, false, false);
+            lua::pushvalue(state, indexer::global);
+            lua::getfield(state, -1, "tostring");
+            lua::pushcclosure(state, printl, 1);
+            lua::setfield(state, -2, "print");
+        }
 
         push_state(L, state);
 
@@ -2803,7 +3236,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
 
     int closel(lua_State* L)
     {
-        lua_State* target = Tracker::is(Class::check(L, 1, "lua.state"));
+        lua_State* target = Tracker::is_state(Class::check(L, 1, "lua.state"));
         if (target == nullptr) {
             luaL::error(L, "invalid lua instance");
             return 0;

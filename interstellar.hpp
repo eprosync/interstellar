@@ -10,6 +10,9 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <mutex>
+#include <thread>
+#include <atomic>
 
 // TODO: prepare for more architecture support as per LuaJIT's supported OS & Archs
 
@@ -1439,21 +1442,69 @@ namespace INTERSTELLAR_NAMESPACE {
     // This is used to track lua_State's by name.
     // TODO: Probably need to add some spinning locks here for the upcoming multi-threaded lua_State's
     namespace Tracker {
+
+        union state_union {
+            uintptr_t pointer;
+            API::lua_State* self;
+        };
+
+        struct state_tracking {
+            std::string name;
+            std::shared_ptr<std::mutex> mutex;
+            state_union state;
+            bool threaded;
+            bool internal;
+            bool root;
+        };
+
         typedef void (*lua_Closure) (API::lua_State* L);
+
+        extern std::unique_lock<std::mutex>& runtime_lock();
+        extern void increment();
+        extern void decrement();
+        extern void runtime();
+        extern inline uintptr_t id(API::lua_State* L);
+        extern state_tracking* get_tracker(API::lua_State* L);
+        extern state_tracking* get_tracker(void* L);
+        extern state_tracking* get_tracker(uintptr_t L);
+        extern state_tracking* get_tracker(std::string name);
+        extern API::lua_State* is_state(API::lua_State* L);
+        extern API::lua_State* is_state(uintptr_t L);
+        extern API::lua_State* is_state(void* L);
+        extern API::lua_State* is_state(std::string name);
+        extern API::lua_State* get_root();
+        extern bool is_root(API::lua_State* L);
+        extern bool is_root(void* L);
+        extern bool is_root(uintptr_t L);
+        extern bool is_root(std::string name);
+        extern bool is_internal(API::lua_State* L);
+        extern bool is_internal(void* L);
+        extern bool is_internal(uintptr_t L);
+        extern bool is_internal(std::string name);
+        extern bool is_threaded(API::lua_State* L);
+        extern bool is_threaded(void* L);
+        extern bool is_threaded(uintptr_t L);
+        extern bool is_threaded(std::string name);
+        extern bool should_lock(API::lua_State* target, API::lua_State* source);
+        extern std::string get_name(API::lua_State* L);
+        extern std::vector<std::pair<std::string, API::lua_State*>> get_states();
+        extern std::unique_lock<std::mutex> lock(API::lua_State* L);
+        extern std::unique_lock<std::mutex> lock(void* L);
+        extern std::unique_lock<std::mutex> lock(uintptr_t L);
+        extern std::unique_lock<std::mutex> lock(std::string name);
+        extern void cross_lock(API::lua_State* target, API::lua_State* source);
+        extern void cross_unlock(API::lua_State* target, API::lua_State* source);
+        extern void listen(API::lua_State* L, std::string name, bool internal = false);
+        extern void listen(API::lua_State* L, std::string name, std::shared_ptr<std::mutex> guard, bool internal = false);
+        extern void destroy(API::lua_State* L);
+        extern void destroy(uintptr_t L);
+        extern void destroy(void* L);
+        extern void destroy(std::string name);
         extern void pre_remove(API::lua_State* L);
         extern void post_remove(API::lua_State* L);
-        extern std::vector<std::pair<std::string, API::lua_State*>> all();
-        extern bool exists(API::lua_State* L);
-        extern API::lua_State* get(std::string name);
-        extern uintptr_t id(API::lua_State* L);
-        extern API::lua_State* is(uintptr_t L);
-        extern API::lua_State* is(void* L);
-        extern bool is_internal(API::lua_State* L);
-        extern std::string get_name(API::lua_State* L);
-        extern bool is_root(API::lua_State* L);
-        extern void listen(API::lua_State* L, std::string name = "", bool internalize = false);
         extern void add(std::string name, lua_Closure callback);
         extern void remove(std::string name);
+        extern inline void init();
     }
 
     // Responsible for tracking and handling metatables with userdatas
@@ -1507,14 +1558,8 @@ namespace INTERSTELLAR_NAMESPACE {
         // Compiles & executes lua, string is returned if there is an error
         extern std::string execute(API::lua_State* L, std::string source, std::string name);
 
-        // Tells Tracker to keep tabs on this lua_State, used if you didn't actually make them through reflection
-        extern void assign(std::string name, API::lua_State* L);
-
         // Opens a new lua_State
-        extern API::lua_State* open(std::string name, bool internal = false);
-
-        // Get's a lua_State by name association
-        extern API::lua_State* get(std::string name);
+        extern API::lua_State* open(std::string name, bool internal = false, bool threaded = false);
 
         // Closes a lua_State
         extern void close(API::lua_State* L);

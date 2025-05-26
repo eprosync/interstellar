@@ -278,11 +278,51 @@ namespace INTERSTELLAR_NAMESPACE::Table {
         return 1;
     }
 
+    int usage(lua_State* L)
+    {
+        luaL::checktable(L, 1);
+
+        using namespace Engine;
+
+        TValue* tv = lua::toraw(L, 1);
+        GCtab* t = (GCtab*)gcV(tv);
+
+        lua::pushnumber(L, t->asize);
+        lua::pushnumber(L, t->hmask);
+
+        return 2;
+    }
+
+    int alloc(lua_State* L)
+    {
+        int asize = luaL::checknumber(L, 1);
+        if (asize < 0) {
+            luaL::argerror(L, 1, "invalid array size");
+            return 0;
+        }
+
+        int hbits = luaL::checknumber(L, 2);
+        if (hbits < 0) {
+            luaL::argerror(L, 2, "invalid hash size");
+            return 0;
+        }
+
+        lua::createtable(L, asize, hbits);
+
+        return 1;
+    }
+
     void push(lua_State* L, UMODULE hndle)
     {
         lua::pushvalue(L, indexer::global);
         lua::getfield(L, -1, "table");
         lua::remove(L, -2);
+
+        lua::pushcfunction(L, alloc);
+        lua::setfield(L, -2, "alloc");
+
+        lua::pushcfunction(L, usage);
+        lua::setfield(L, -2, "usage");
 
         lua::pushcfunction(L, isarray);
         lua::setfield(L, -2, "isarray");

@@ -327,7 +327,7 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
 
     void Handle::clean(lua_State* L, std::string name)
     {
-        if (Tracker::exists(L)) return;
+        if (Tracker::is_state(L) == nullptr) return;
 
         uintptr_t id = Tracker::id(L);
 
@@ -351,7 +351,7 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
     {
         uintptr_t id = Tracker::id(L);
 
-        if (Tracker::exists(L)) {
+        if (Tracker::is_state(L) != nullptr) {
             uintptr_t id = Tracker::id(L);
             if (callbacks.find(id) != callbacks.end()) {
                 auto& list = callbacks[id];
@@ -392,7 +392,7 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
 
     int interstate_call(lua_State* L)
     {
-        lua_State* target = Tracker::is(Class::check(L, 1, "lua.state"));
+        lua_State* target = Tracker::is_state(Class::check(L, 1, "lua.state"));
         if (target == nullptr) {
             luaL::error(L, "invalid lua instance");
             return 0;
@@ -403,8 +403,21 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
         if (target != L) {
             call_origin = L;
             call_name = name;
-            lua::pushcfunction(target, wrapper_call);
-            lua::pcall(target, 0, 0, 0);
+
+            if (Tracker::should_lock(target, L)) {
+                bool should_notify = !Tracker::is_threaded(target);
+                if (should_notify) Tracker::increment();
+                Tracker::cross_lock(target, L);
+                lua::pushcfunction(target, wrapper_call);
+                lua::pcall(target, 0, 0, 0);
+                Tracker::cross_unlock(target, L);
+                if (should_notify) Tracker::decrement();
+            }
+            else {
+                lua::pushcfunction(target, wrapper_call);
+                lua::pcall(target, 0, 0, 0);
+            }
+
             return 0;
         }
 
@@ -443,7 +456,7 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
 
     int interstate_rcall(lua_State* L)
     {
-        lua_State* target = Tracker::is(Class::check(L, 1, "lua.state"));
+        lua_State* target = Tracker::is_state(Class::check(L, 1, "lua.state"));
         if (target == nullptr) {
             luaL::error(L, "invalid lua instance");
             return 0;
@@ -454,8 +467,21 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
         if (target != L) {
             rcall_origin = L;
             rcall_name = name;
-            lua::pushcfunction(target, wrapper_rcall);
-            lua::pcall(target, 0, 0, 0);
+
+            if (Tracker::should_lock(target, L)) {
+                bool should_notify = !Tracker::is_threaded(target);
+                if (should_notify) Tracker::increment();
+                Tracker::cross_lock(target, L);
+                lua::pushcfunction(target, wrapper_rcall);
+                lua::pcall(target, 0, 0, 0);
+                Tracker::cross_unlock(target, L);
+                if (should_notify) Tracker::decrement();
+            }
+            else {
+                lua::pushcfunction(target, wrapper_rcall);
+                lua::pcall(target, 0, 0, 0);
+            }
+
             return rcall_returns;
         }
 
