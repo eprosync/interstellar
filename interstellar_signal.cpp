@@ -250,8 +250,10 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
 
         auto& funcs = list_itr->second;
 
-        for (auto const& [identity, reference] : funcs)
-        {
+        for (auto it = funcs.begin(); it != funcs.end(); ) {
+            const std::string& identity = it->first;
+            int reference = it->second;
+
             lua::pushref(L, reference);
             for (int i = 0; i < inputs; i++) {
                 lua::pushvalue(L, -(1 + inputs));
@@ -263,9 +265,11 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
                 auto& on_error = get_on_error();
                 for (auto const& handle : on_error) handle.second(L, name, identity, err);
                 luaL::rmref(L, reference);
-                funcs.erase(identity);
+                it = funcs.erase(it);
                 continue;
             }
+
+            ++it;
         }
 
         lua::pop(L, inputs);
@@ -304,8 +308,9 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
 
         auto& funcs = list_itr->second;
 
-        for (auto const& [identity, reference] : funcs)
-        {
+        for (auto it = funcs.begin(); it != funcs.end(); ) {
+            const std::string& identity = it->first;
+            int reference = it->second;
             int top = lua::gettop(L);
 
             lua::pushref(L, reference);
@@ -319,7 +324,7 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
                 auto& on_error = get_on_error();
                 for (auto const& handle : on_error) handle.second(L, name, identity, err);
                 luaL::rmref(L, reference);
-                funcs.erase(identity);
+                it = funcs.erase(it);
                 continue;
             }
 
@@ -332,6 +337,8 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
             else {
                 lua::pop(L, res);
             }
+
+            ++it;
         }
 
         lua::pop(L, inputs);
