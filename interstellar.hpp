@@ -13,6 +13,7 @@
 #include <mutex>
 #include <thread>
 #include <atomic>
+#include <memory>
 
 // TODO: prepare for more architecture support as per LuaJIT's supported OS & Archs
 
