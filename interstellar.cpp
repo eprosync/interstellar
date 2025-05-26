@@ -1172,7 +1172,6 @@ namespace INTERSTELLAR_NAMESPACE {
             }
         }
 
-
         std::unique_lock<std::mutex> lock(lua_State* L)
         {
             state_tracking* tracker = get_tracker(L);
@@ -1373,6 +1372,8 @@ namespace INTERSTELLAR_NAMESPACE {
         {
             mapping = std::unordered_map<uintptr_t, state_tracking*>();
             imapping = std::unordered_map<std::string, state_tracking*>();
+            cross_trace = std::unordered_map<uintptr_t, unsigned int>();
+            cross_locks = std::unordered_map<uintptr_t, std::unique_ptr<std::unique_lock<std::mutex>>>();
             global_mtx = std::make_shared<std::mutex>();
             global_lock = std::unique_lock<std::mutex>(*global_mtx);
             global_lock.unlock();
