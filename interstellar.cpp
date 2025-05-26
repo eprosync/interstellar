@@ -905,13 +905,8 @@ namespace INTERSTELLAR_NAMESPACE {
         std::unordered_map<uintptr_t, state_tracking*> mapping;
         std::unordered_map<std::string, state_tracking*> imapping;
         static std::shared_ptr<std::mutex> global_mtx;
-        static std::shared_ptr<std::unique_lock<std::mutex>> global_lock;
+        static std::unique_ptr<std::unique_lock<std::mutex>> global_lock;
         std::atomic<unsigned int> expecting;
-
-        std::shared_ptr<std::unique_lock<std::mutex>> runtime_lock()
-        {
-            return global_lock;
-        }
 
         void increment()
         {
@@ -1376,7 +1371,7 @@ namespace INTERSTELLAR_NAMESPACE {
             cross_trace = std::unordered_map<uintptr_t, unsigned int>();
             cross_locks = std::unordered_map<uintptr_t, std::unique_ptr<std::unique_lock<std::mutex>>>();
             global_mtx = std::make_shared<std::mutex>();
-            global_lock = std::make_shared<std::unique_lock<std::mutex>>(*global_mtx);
+            global_lock = std::make_unique<std::unique_lock<std::mutex>>(*global_mtx);
             global_lock->unlock();
             global_lock->lock();
         }

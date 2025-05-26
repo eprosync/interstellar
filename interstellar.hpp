@@ -1460,7 +1460,6 @@ namespace INTERSTELLAR_NAMESPACE {
 
         typedef void (*lua_Closure) (API::lua_State* L);
 
-        extern std::shared_ptr<std::unique_lock<std::mutex>> runtime_lock();
         extern void increment();
         extern void decrement();
         extern void runtime();
