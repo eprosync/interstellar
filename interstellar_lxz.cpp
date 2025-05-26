@@ -4,6 +4,7 @@
 #pragma comment (lib, "BZ2.Lib")
 #pragma comment (lib, "LZMA.Lib")
 #include <bxzstr/bxzstr.hpp>
+#include <unordered_map>
 #include <istream>
 #include <ostream>
 #include <iostream>
@@ -20,15 +21,21 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
     std::vector<std::tuple<uintptr_t, int, std::string>> queue;
     std::mutex dethread_lock;
 
-    std::map<std::string, lua_LXZ_Error> on_error;
+    std::unordered_map<std::string, lua_LXZ_Error>& get_on_error()
+    {
+        static std::unordered_map<std::string, lua_LXZ_Error> m;
+        return m;
+    }
 
     void add_error(std::string name, lua_LXZ_Error callback)
     {
+        auto& on_error = get_on_error();
         on_error.emplace(name, callback);
     }
 
     void remove_error(std::string name)
     {
+        auto& on_error = get_on_error();
         on_error.erase(name);
     }
 
@@ -56,6 +63,7 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
                 if (lua::tcall(L, 1, 0)) {
                     std::string err = lua::tocstring(L, -1);
                     lua::pop(L);
+                    auto& on_error = get_on_error();
                     for (auto const& handle : on_error) handle.second(L, err);
                 }
 
@@ -352,7 +360,6 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
     }
 
     void api() {
-        on_error = std::map<std::string, lua_LXZ_Error>();
         Reflection::add("lxz", push);
     }
 }

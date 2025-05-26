@@ -901,9 +901,22 @@ namespace INTERSTELLAR_NAMESPACE {
     namespace Tracker {
         Signal::Handle* signal = new Signal::Handle();
 
-        std::unordered_map<std::string, lua_Closure> dispatch;
-        std::unordered_map<uintptr_t, state_tracking*> mapping;
-        std::unordered_map<std::string, state_tracking*> imapping;
+        std::unordered_map<std::string, lua_Closure>& get_dispatch() {
+            static std::unordered_map<std::string, lua_Closure> m;
+            return m;
+        }
+
+        std::unordered_map<uintptr_t, state_tracking*>& get_mapping() {
+            static std::unordered_map<uintptr_t, state_tracking*> m;
+            return m;
+        }
+
+        std::unordered_map<std::string, state_tracking*>& get_imapping() {
+            static std::unordered_map<std::string, state_tracking*> m;
+            return m;
+        }
+
+        static std::shared_ptr<std::mutex> access_mtx;
         static std::shared_ptr<std::mutex> global_mtx;
         static std::unique_ptr<std::unique_lock<std::mutex>> global_lock;
         std::atomic<unsigned int> expecting;
@@ -932,7 +945,9 @@ namespace INTERSTELLAR_NAMESPACE {
 
         state_tracking* get_tracker(lua_State* L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             uintptr_t id = (uintptr_t)L;
+            auto& mapping = get_mapping();
             auto res = mapping.find(id);
             if (res == mapping.end()) return nullptr;
             return res->second;
@@ -940,7 +955,9 @@ namespace INTERSTELLAR_NAMESPACE {
 
         state_tracking* get_tracker(void* L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             uintptr_t id = (uintptr_t)L;
+            auto& mapping = get_mapping();
             auto res = mapping.find(id);
             if (res == mapping.end()) return nullptr;
             return res->second;
@@ -948,6 +965,8 @@ namespace INTERSTELLAR_NAMESPACE {
 
         state_tracking* get_tracker(uintptr_t L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
+            auto& mapping = get_mapping();
             auto res = mapping.find(L);
             if (res == mapping.end()) return nullptr;
             return res->second;
@@ -955,29 +974,39 @@ namespace INTERSTELLAR_NAMESPACE {
 
         state_tracking* get_tracker(std::string name)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
+            auto& imapping = get_imapping();
             auto res = imapping.find(name);
             if (res == imapping.end()) return nullptr;
             return res->second;
         }
 
         lua_State* is_state(lua_State* L) {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             uintptr_t id = (uintptr_t)L;
+            auto& mapping = get_mapping();
             if (mapping.find(id) == mapping.end()) return nullptr;
             return (lua_State*)L;
         }
 
         lua_State* is_state(uintptr_t L) {
+            std::lock_guard<std::mutex> guard(*access_mtx);
+            auto& mapping = get_mapping();
             if (mapping.find(L) == mapping.end()) return nullptr;
             return (lua_State*)L;
         }
 
         lua_State* is_state(void* L) {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             uintptr_t id = (uintptr_t)L;
+            auto& mapping = get_mapping();
             if (mapping.find(id) == mapping.end()) return nullptr;
             return (lua_State*)L;
         }
 
         lua_State* is_state(std::string name) {
+            std::lock_guard<std::mutex> guard(*access_mtx);
+            auto& imapping = get_imapping();
             auto res = imapping.find(name);
             if (res == imapping.end()) return nullptr;
             return res->second->state.self;
@@ -985,7 +1014,9 @@ namespace INTERSTELLAR_NAMESPACE {
 
         lua_State* get_root()
         {
-            for (auto entry : mapping) {
+            std::lock_guard<std::mutex> guard(*access_mtx);
+            auto& mapping = get_mapping();
+            for (auto& entry : mapping) {
                 if (entry.second->root) {
                     return entry.second->state.self;
                 }
@@ -995,6 +1026,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_root(lua_State* L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->root;
@@ -1004,6 +1036,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_root(void* L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->root;
@@ -1013,6 +1046,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_root(uintptr_t L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->root;
@@ -1022,6 +1056,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_root(std::string name)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(name);
             if (tracker != nullptr) {
                 return tracker->root;
@@ -1031,6 +1066,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_internal(lua_State* L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->internal;
@@ -1040,6 +1076,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_internal(void* L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->internal;
@@ -1049,6 +1086,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_internal(uintptr_t L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->internal;
@@ -1058,6 +1096,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_internal(std::string name)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(name);
             if (tracker != nullptr) {
                 return tracker->internal;
@@ -1067,6 +1106,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_threaded(lua_State* L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->threaded;
@@ -1076,6 +1116,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_threaded(void* L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->threaded;
@@ -1085,6 +1126,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_threaded(uintptr_t L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
                 return tracker->threaded;
@@ -1094,6 +1136,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         bool is_threaded(std::string name)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             state_tracking* tracker = get_tracker(name);
             if (tracker != nullptr) {
                 return tracker->threaded;
@@ -1108,7 +1151,9 @@ namespace INTERSTELLAR_NAMESPACE {
 
         std::string get_name(lua_State* L)
         {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             uintptr_t id = (uintptr_t)L;
+            auto& mapping = get_mapping();
             auto res = mapping.find(id);
             if (res != mapping.end()) {
                 return res->second->name;
@@ -1117,9 +1162,11 @@ namespace INTERSTELLAR_NAMESPACE {
         }
 
         std::vector<std::pair<std::string, lua_State*>> get_states() {
+            std::lock_guard<std::mutex> guard(*access_mtx);
             std::vector<std::pair<std::string, lua_State*>> list;
 
-            for (auto object : mapping) {
+            auto& mapping = get_mapping();
+            for (auto& object : mapping) {
                 std::string name = object.second->name;
                 lua_State* L = object.second->state.self;
                 list.push_back(std::pair<std::string, lua_State*>(name, L));
@@ -1129,9 +1176,17 @@ namespace INTERSTELLAR_NAMESPACE {
         }
 
         // since cross-states should be able to talk back and forth
-        std::mutex global_cross_mutex;
-        std::unordered_map<uintptr_t, unsigned int> cross_trace;
-        std::unordered_map<uintptr_t, std::unique_ptr<std::unique_lock<std::mutex>>> cross_locks;
+        static std::mutex global_cross_mutex;
+
+        std::unordered_map<uintptr_t, unsigned int>& get_cross_trace() {
+            static std::unordered_map<uintptr_t, unsigned int> m;
+            return m;
+        }
+
+        std::unordered_map<uintptr_t, std::unique_ptr<std::unique_lock<std::mutex>>>& get_cross_locks() {
+            static std::unordered_map<uintptr_t, std::unique_ptr<std::unique_lock<std::mutex>>> m;
+            return m;
+        }
 
         void cross_lock(lua_State* target, lua_State* source)
         {
@@ -1140,6 +1195,9 @@ namespace INTERSTELLAR_NAMESPACE {
             auto target_tracker = get_tracker(target);
             auto target_ptr = target_tracker->state.pointer;
             auto source_ptr = get_tracker(source)->state.pointer;
+
+            auto& cross_trace = get_cross_trace();
+            auto& cross_locks = get_cross_locks();
 
             if (cross_trace[target_ptr] == 0) {
                 auto mutex = target_tracker->mutex;
@@ -1157,6 +1215,9 @@ namespace INTERSTELLAR_NAMESPACE {
 
             auto target_ptr = get_tracker(target)->state.pointer;
             auto source_ptr = get_tracker(source)->state.pointer;
+
+            auto& cross_trace = get_cross_trace();
+            auto& cross_locks = get_cross_locks();
 
             if (--cross_trace[target_ptr] == 0) {
                 cross_locks.erase(target_ptr);
@@ -1215,8 +1276,13 @@ namespace INTERSTELLAR_NAMESPACE {
                 tracker->state.self = L;
                 tracker->mutex = global_mtx;
 
+                auto& mapping = get_mapping();
+                auto& imapping = get_imapping();
+
+                std::unique_lock<std::mutex> guard_access(*access_mtx);
                 mapping.emplace(id, tracker);
                 imapping.emplace(name, tracker);
+                if (guard_access.owns_lock()) guard_access.unlock(); guard_access.release();
 
                 if (mapping.size() == 1) {
                     tracker->root = true;
@@ -1258,8 +1324,13 @@ namespace INTERSTELLAR_NAMESPACE {
                 tracker->state.self = L;
                 tracker->mutex = mtx;
 
+                auto& mapping = get_mapping();
+                auto& imapping = get_imapping();
+
+                std::unique_lock<std::mutex> guard_access(*access_mtx);
                 mapping.emplace(id, tracker);
                 imapping.emplace(name, tracker);
+                if (guard_access.owns_lock()) guard_access.unlock(); guard_access.release();
 
                 if (mapping.size() == 1) {
                     tracker->root = true;
@@ -1317,6 +1388,10 @@ namespace INTERSTELLAR_NAMESPACE {
                 if (guard.owns_lock()) guard.unlock(); guard.release();
             }
 
+            auto& mapping = get_mapping();
+            auto& imapping = get_imapping();
+
+            std::lock_guard<std::mutex> guard(*access_mtx);
             mapping.erase(tracker->state.pointer);
             imapping.erase(tracker->name);
             delete tracker;
@@ -1344,6 +1419,8 @@ namespace INTERSTELLAR_NAMESPACE {
 
         void pre_remove(lua_State* L) {
             destroy(L);
+
+            auto& dispatch = get_dispatch();
             for (auto& [key, callback] : dispatch) {
                 callback(L);
             }
@@ -1355,21 +1432,19 @@ namespace INTERSTELLAR_NAMESPACE {
 
         void add(std::string name, lua_Closure callback)
         {
+            auto& dispatch = get_dispatch();
             dispatch.emplace(name, callback);
         }
 
         void remove(std::string name)
         {
+            auto& dispatch = get_dispatch();
             dispatch.erase(name);
         }
 
         inline void init()
         {
-            dispatch = std::unordered_map<std::string, lua_Closure>();
-            mapping = std::unordered_map<uintptr_t, state_tracking*>();
-            imapping = std::unordered_map<std::string, state_tracking*>();
-            cross_trace = std::unordered_map<uintptr_t, unsigned int>();
-            cross_locks = std::unordered_map<uintptr_t, std::unique_ptr<std::unique_lock<std::mutex>>>();
+            access_mtx = std::make_shared<std::mutex>();
             global_mtx = std::make_shared<std::mutex>();
             global_lock = std::make_unique<std::unique_lock<std::mutex>>(*global_mtx);
             global_lock->unlock();

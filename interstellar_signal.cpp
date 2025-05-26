@@ -1,18 +1,25 @@
 #include "interstellar_signal.hpp"
 #include <algorithm>
+#include <unordered_map>
 
 namespace INTERSTELLAR_NAMESPACE::Signal {
     using namespace API;
 
-    std::map<std::string, lua_Signal_Error> on_error;
+    std::unordered_map<std::string, lua_Signal_Error>& get_on_error()
+    {
+        static std::unordered_map<std::string, lua_Signal_Error> m;
+        return m;
+    }
 
     void add_error(std::string name, lua_Signal_Error callback)
     {
+        auto& on_error = get_on_error();
         on_error.emplace(name, callback);
     }
 
     void remove_error(std::string name)
     {
+        auto& on_error = get_on_error();
         on_error.erase(name);
     }
 
@@ -243,6 +250,7 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
             if (lua::tcall(L, inputs, 0)) {
                 std::string err = lua::tocstring(L, -1);
                 lua::pop(L);
+                auto& on_error = get_on_error();
                 for (auto const& handle : on_error) handle.second(L, name, identity, err);
                 luaL::rmref(L, reference);
                 funcs.erase(identity);
@@ -298,6 +306,7 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
             if (lua::tcall(L, inputs, outputs)) {
                 std::string err = lua::tocstring(L, -1);
                 lua::pop(L);
+                auto& on_error = get_on_error();
                 for (auto const& handle : on_error) handle.second(L, name, identity, err);
                 luaL::rmref(L, reference);
                 funcs.erase(identity);
@@ -508,7 +517,6 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
     }
 
     void api() {
-        on_error = std::map<std::string, lua_Signal_Error>();
         Reflection::add("signal", push);
     }
 }

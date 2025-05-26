@@ -206,15 +206,21 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         return path_start != std::string::npos ? url.substr(path_start) : "/";
     }
 
-    std::map<std::string, lua_IOT_Error> on_error;
+    std::unordered_map<std::string, lua_IOT_Error>& get_on_error()
+    {
+        static std::unordered_map<std::string, lua_IOT_Error> m;
+        return m;
+    }
 
     void add_error(std::string name, lua_IOT_Error callback)
     {
+        auto& on_error = get_on_error();
         on_error.emplace(name, callback);
     }
 
     void remove_error(std::string name)
     {
+        auto& on_error = get_on_error();
         on_error.erase(name);
     }
 
@@ -1375,6 +1381,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         if (lua::tcall(L, 4, 0)) {
                             std::string err = lua::tocstring(L, -1);
                             lua::pop(L);
+                            auto& on_error = get_on_error();
                             for (auto const& handle : on_error) handle.second(L, "serve - SOCKET - SOCKET", err);
                         }
                     }
@@ -1384,6 +1391,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         if (lua::tcall(L, 3, 0)) {
                             std::string err = lua::tocstring(L, -1);
                             lua::pop(L);
+                            auto& on_error = get_on_error();
                             for (auto const& handle : on_error) handle.second(L, "serve - SOCKET - SOCKET", err);
                         }
                     }
@@ -1445,6 +1453,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             if (lua::tcall(L, 2, 1)) {
                 std::string err = lua::tocstring(L, -1);
                 lua::pop(L);
+                auto& on_error = get_on_error();
                 for (auto const& handle : on_error) handle.second(L, "serve - " + method + " - " + path, err);
             }
             else {
@@ -2352,6 +2361,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
                 if (lua::tcall(L, 4, 1)) {
                     std::string err = lua::tocstring(L, -1);
+                    auto& on_error = get_on_error();
                     for (auto const& handle : on_error) handle.second(L, "progress - " + url, err);
                     std::lock_guard<std::mutex> cancel_lock_guard(progress_cancel_lock);
                     if (!progress_cancel.empty()) {
@@ -2438,6 +2448,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 if (lua::tcall(L, 1, 0)) {
                     std::string err = lua::tocstring(L, -1);
                     lua::pop(L);
+                    auto& on_error = get_on_error();
                     for (auto const& handle : on_error) handle.second(L, "http - " + response.url.str(), err);
                 }
 
@@ -2499,6 +2510,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
                 if (lua::tcall(L, 1, 1)) {
                     std::string err = lua::tocstring(L, -1);
+                    auto& on_error = get_on_error();
                     for (auto const& handle : on_error) handle.second(L, "stream - " + response.url.str(), err);
                     std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
                     if (!stream_cancel.empty()) {
@@ -2762,7 +2774,6 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
     }
 
     void api() {
-        on_error = std::map<std::string, lua_IOT_Error>();
         Tracker::add("iot", cleanup);
         Reflection::add("iot", push);
     }
