@@ -899,7 +899,7 @@ namespace INTERSTELLAR_NAMESPACE {
     using namespace API;
 
     namespace Tracker {
-        Signal::Handle* signal = new Signal::Handle();
+        Signal::Handle* signal;
 
         std::unordered_map<std::string, lua_Closure>& get_dispatch() {
             static std::unordered_map<std::string, lua_Closure> m;
@@ -1432,6 +1432,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         inline void init()
         {
+            signal = Signal::create();
             access_mtx = std::make_shared<std::mutex>();
             global_mtx = std::make_shared<std::mutex>();
             global_lock = std::make_unique<std::unique_lock<std::mutex>>(*global_mtx);
@@ -2045,7 +2046,6 @@ namespace INTERSTELLAR_NAMESPACE {
             return "";
         }
 
-        Signal::Handle* tasker = new Signal::Handle();
         lua_State* open(std::string name, bool internal, bool threaded)
         {
             lua_State* exists = Tracker::is_state(name);
@@ -2060,6 +2060,8 @@ namespace INTERSTELLAR_NAMESPACE {
             lua::gc(L, 1, -1);
 
             if (threaded) {
+                static Signal::Handle* tasker = Signal::create();
+
                 lua::pushvalue(L, indexer::global);
                 tasker->api(L);
                 lua::setfield(L, -2, "task");

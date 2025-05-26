@@ -382,7 +382,7 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
         return new Handle();
     }
 
-    Handle* universal = create();
+    Handle* universal;
 
     lua_State* call_origin;
     std::string call_name;
@@ -504,6 +504,8 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
     }
 
     void push(API::lua_State* L, UMODULE hndle) {
+        universal = create();
+        
         Tracker::add("signal", cleanup);
 
         lua::newtable(L);
