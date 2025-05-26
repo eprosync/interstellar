@@ -1463,7 +1463,7 @@ namespace INTERSTELLAR_NAMESPACE {
         extern void increment();
         extern void decrement();
         extern void runtime();
-        extern inline uintptr_t id(API::lua_State* L);
+        extern uintptr_t id(API::lua_State* L);
         extern state_tracking* get_tracker(API::lua_State* L);
         extern state_tracking* get_tracker(void* L);
         extern state_tracking* get_tracker(uintptr_t L);

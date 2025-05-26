@@ -110,13 +110,15 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
         lua::pushvalue(L, index);
         int reference = luaL::newref(L, -1);
 
-        if (callbacks.find(id) == callbacks.end()) callbacks.emplace(id, std::unordered_map<std::string, std::unordered_map<std::string, int>>());
+        auto _callbacks = callbacks.find(id);
+        if (_callbacks == callbacks.end()) callbacks.emplace(id, std::unordered_map<std::string, std::unordered_map<std::string, int>>());
 
-        auto& list = callbacks[id];
+        auto& list = callbacks.find(id)->second;
+        auto _list = list.find(name);
 
-        if (list.find(name) == list.end()) list.emplace(name, std::unordered_map<std::string, int>());
+        if (_list == list.end()) list.emplace(name, std::unordered_map<std::string, int>());
 
-        auto& funcs = list[name];
+        auto& funcs = list.find(name)->second;
 
         if (funcs.find(identity) != funcs.end()) {
             luaL::rmref(L, funcs[identity]);
@@ -130,13 +132,15 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
     {
         uintptr_t id = Tracker::id(L);
 
-        if (callbacks.find(id) == callbacks.end()) return 0;
+        auto _callbacks = callbacks.find(id);
+        if (_callbacks == callbacks.end()) return 0;
 
-        auto& list = callbacks[id];
+        auto& list = _callbacks->second;
+        auto _list = list.find(name);
 
-        if (list.find(name) == list.end()) return 0;
+        if (_list == list.end()) return 0;
 
-        auto& funcs = list[name];
+        auto& funcs = _list->second;
 
         if (funcs.find(identity) == funcs.end()) return 0;
 
@@ -147,13 +151,15 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
     {
         uintptr_t id = Tracker::id(L);
 
-        if (callbacks.find(id) == callbacks.end()) return;
+        auto _callbacks = callbacks.find(id);
+        if (_callbacks == callbacks.end()) return;
 
-        auto& list = callbacks[id];
+        auto& list = _callbacks->second;
+        auto _list = list.find(name);
 
-        if (list.find(name) == list.end()) return;
+        if (_list == list.end()) return;
 
-        auto& funcs = list[name];
+        auto& funcs = _list->second;
 
         if (funcs.find(identity) == funcs.end()) return;
 
@@ -165,13 +171,15 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
     {
         uintptr_t id = Tracker::id(L);
 
-        if (callbacks.find(id) == callbacks.end()) return 0;
+        auto _callbacks = callbacks.find(id);
+        if (_callbacks == callbacks.end()) return 0;
 
-        auto& list = callbacks[id];
+        auto& list = _callbacks->second;
+        auto _list = list.find(name);
 
-        if (list.find(name) == list.end()) return 0;
+        if (_list == list.end()) return 0;
 
-        auto& funcs = list[name];
+        auto& funcs = _list->second;
 
         return funcs.size();
     }
@@ -180,13 +188,15 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
     {
         uintptr_t id = Tracker::id(L);
 
-        if (callbacks.find(id) == callbacks.end()) return false;
+        auto _callbacks = callbacks.find(id);
+        if (_callbacks == callbacks.end()) return false;
 
-        auto& list = callbacks[id];
+        auto& list = _callbacks->second;
+        auto _list = list.find(name);
 
-        if (list.find(name) == list.end()) return false;
+        if (_list == list.end()) return false;
 
-        auto& funcs = list[name];
+        auto& funcs = _list->second;
 
         return funcs.size() > 0;
     }
@@ -504,8 +514,6 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
     }
 
     void push(API::lua_State* L, UMODULE hndle) {
-        universal = create();
-        
         Tracker::add("signal", cleanup);
 
         lua::newtable(L);
@@ -519,6 +527,7 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
     }
 
     void api() {
+        universal = create();
         Reflection::add("signal", push);
     }
 }

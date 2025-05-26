@@ -939,7 +939,7 @@ namespace INTERSTELLAR_NAMESPACE {
             global_lock->lock();
         }
 
-        inline uintptr_t id(lua_State* L) {
+        uintptr_t id(lua_State* L) {
             return (uintptr_t)L;
         }
 
