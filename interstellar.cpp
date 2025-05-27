@@ -901,7 +901,12 @@ namespace INTERSTELLAR_NAMESPACE {
     namespace Tracker {
         Signal::Handle* signal;
 
-        std::unordered_map<std::string, lua_Closure>& get_dispatch() {
+        std::unordered_map<std::string, lua_Closure>& get_opening() {
+            static std::unordered_map<std::string, lua_Closure> m;
+            return m;
+        }
+
+        std::unordered_map<std::string, lua_Closure>& get_closing() {
             static std::unordered_map<std::string, lua_Closure> m;
             return m;
         }
@@ -1276,6 +1281,11 @@ namespace INTERSTELLAR_NAMESPACE {
                     tracker->root = true;
                 }
 
+                auto& dispatch = get_opening();
+                for (auto& [key, callback] : dispatch) {
+                    callback(L);
+                }
+
                 for (auto& state : Tracker::get_states()) {
                     lua_State* S = state.second;
 
@@ -1322,6 +1332,11 @@ namespace INTERSTELLAR_NAMESPACE {
 
                 if (mapping.size() == 1) {
                     tracker->root = true;
+                }
+
+                auto& dispatch = get_opening();
+                for (auto& [key, callback] : dispatch) {
+                    callback(L);
                 }
 
                 for (auto& state : Tracker::get_states()) {
@@ -1408,7 +1423,7 @@ namespace INTERSTELLAR_NAMESPACE {
         void pre_remove(lua_State* L) {
             destroy(L);
 
-            auto& dispatch = get_dispatch();
+            auto& dispatch = get_closing();
             for (auto& [key, callback] : dispatch) {
                 callback(L);
             }
@@ -1418,16 +1433,16 @@ namespace INTERSTELLAR_NAMESPACE {
             Class::cleanup(L);
         }
 
-        void add(std::string name, lua_Closure callback)
+        void on_open(std::string name, lua_Closure callback)
         {
-            auto& dispatch = get_dispatch();
+            auto& dispatch = get_opening();
             dispatch.emplace(name, callback);
         }
 
-        void remove(std::string name)
+        void on_close(std::string name, lua_Closure callback)
         {
-            auto& dispatch = get_dispatch();
-            dispatch.erase(name);
+            auto& dispatch = get_closing();
+            dispatch.emplace(name, callback);
         }
 
         inline void init()
@@ -1858,24 +1873,36 @@ namespace INTERSTELLAR_NAMESPACE {
 
             lua::pushvalue(from, source);
             lua::pushnil(from);
+
             while (lua::next(from, -2) != 0) {
+                // TODO: we need to add a check for cyclic tables!
+                if (lua::istable(from, -1)) {
+                    if (lua::rawequal(from, -1, -3)) {
+                        lua::pop(from, 1);
+                        continue;
+                    }
+                }
+
                 int err = transfer(from, to, -2, no_error);
                 if (err != 0) {
-                    lua::pop(from, 3);
+                    lua::pop(from, 2);
                     lua::pop(to, 1);
                     return err;
                 }
+
                 err = transfer(from, to, -1, no_error);
                 if (err != 0) {
-                    lua::pop(from, 3);
+                    lua::pop(from, 2);
                     lua::pop(to, 2);
                     return err;
                 }
+
                 lua::settable(to, -3);
-                lua::pop(from);
+
+                lua::pop(from, 1);
             }
 
-            lua::pop(from, 2);
+            lua::pop(from, 1);
 
             return 0;
         }
@@ -2278,6 +2305,12 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
         }
 
         namespace Functions {
+            int typestack(lua_State* L)
+            {
+                lua_State* target = from_class(L, 1); if (target == nullptr) return 0;
+                lua::pushcstring(L, lua::typestack(target, luaL::checknumber(L, 2)));
+                return 1;
+            }
 
             int pushany(lua_State* L) {
                 lua_State* target = from_class(L, 1); if (target == nullptr) return 0;
@@ -2822,10 +2855,11 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
 
             void push(lua_State* L)
             {
-                Tracker::add("capi", cleanup);
+                Tracker::on_close("capi", cleanup);
 
                 lua::pushcfunction(L, api); lua::setfield(L, -2, "api");
 
+                lua::pushcfunction(L, typestack); lua::setfield(L, -2, "typestack");
                 lua::pushcfunction(L, pushany); lua::setfield(L, -2, "pushany");
                 lua::pushcfunction(L, getany); lua::setfield(L, -2, "getany");
                 lua::pushcfunction(L, pop); lua::setfield(L, -2, "pop");
@@ -2930,20 +2964,18 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
             stack_target.pop_back();
         }
 
-        lua_State* temp_origin;
         int stack_handler(lua_State* L)
         {
             stack_pointer = lua::gettop(L);
-            lua::pushvalue(temp_origin, 1);
-            push(temp_origin, L);
-            if (lua::pcall(temp_origin, 1, -1, 0)) {
-                pop();
-                std::string err = lua::tocstring(temp_origin, -1);
-                lua::pop(temp_origin);
+            lua_State* origin = stack_origin.back();
+            lua::pushvalue(origin, 2);
+            push_state(origin, L);
+            if (lua::pcall(origin, 1, -1, 0)) {
+                std::string err = lua::tocstring(origin, -1);
+                lua::pop(origin);
                 luaL::error(L, err.c_str());
                 return 0;
             }
-            pop();
             return 0;
         }
 
@@ -2957,7 +2989,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
                 return 0;
             }
 
-            if (Tracker::is_root(L)) {
+            if (Tracker::is_root(state_target)) {
                 luaL::error(L, "cannot access this function in this lua_State");
                 return 0;
             }
@@ -2967,8 +2999,6 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
                 return 0;
             }
 
-            temp_origin = L;
-
             int top = lua::gettop(L);
 
             if (Tracker::should_lock(state_target, L)) {
@@ -2976,8 +3006,10 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
                 if (should_notify) Tracker::increment();
                 Tracker::cross_lock(state_target, L);
 
+                push(L, state_target);
                 lua::pushcfunction(state_target, stack_handler);
                 if (lua::pcall(state_target, 0, 0, 0)) {
+                    pop();
                     size_t size = 0;
                     std::string err = lua::tocstring(state_target, -1);
                     lua::pop(state_target);
@@ -2986,19 +3018,23 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
                     luaL::error(L, err.c_str());
                     return 0;
                 }
+                pop();
                 
                 Tracker::cross_unlock(state_target, L);
                 if (should_notify) Tracker::decrement();
             }
             else {
+                push(L, state_target);
                 lua::pushcfunction(state_target, stack_handler);
                 if (lua::pcall(state_target, 0, 0, 0)) {
+                    pop();
                     size_t size = 0;
                     std::string err = lua::tocstring(state_target, -1);
                     lua::pop(state_target);
                     luaL::error(L, err.c_str());
                     return 0;
                 }
+                pop();
             }
 
             return lua::gettop(L) - top;
@@ -3014,7 +3050,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
                 return 0;
             }
 
-            if (Tracker::is_root(L)) {
+            if (Tracker::is_root(state_target)) {
                 luaL::error(L, "cannot access this function in this lua_State");
                 return 0;
             }
@@ -3024,8 +3060,6 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
                 return 0;
             }
 
-            temp_origin = L;
-
             int top = lua::gettop(L);
 
             if (Tracker::should_lock(state_target, L)) {
@@ -3033,8 +3067,10 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
                 if (should_notify) Tracker::increment();
                 Tracker::cross_lock(state_target, L);
 
+                push(L, state_target);
                 lua::pushcfunction(state_target, stack_handler);
                 if (lua::pcall(state_target, 0, 0, 0)) {
+                    pop();
                     size_t size = 0;
                     std::string err = lua::tocstring(state_target, -1);
                     lua::pop(state_target);
@@ -3043,19 +3079,23 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
                     luaL::error(L, err.c_str());
                     return 0;
                 }
+                pop();
 
                 Tracker::cross_unlock(state_target, L);
                 if (should_notify) Tracker::decrement();
             }
             else {
+                push(L, state_target);
                 lua::pushcfunction(state_target, stack_handler);
                 if (lua::pcall(state_target, 0, 0, 0)) {
+                    pop();
                     size_t size = 0;
                     std::string err = lua::tocstring(state_target, -1);
                     lua::pop(state_target);
                     luaL::error(L, err.c_str());
                     return 0;
                 }
+                pop();
             }
 
             return lua::gettop(L) - top;

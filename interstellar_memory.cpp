@@ -1543,7 +1543,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     {
         address_meta = std::map<uintptr_t, int>();
         if (OS::ARGV::exists("memory")) {
-            Tracker::add("memory", cleanup);
+            Tracker::on_close("memory", cleanup);
             Reflection::add("memory", push);
             std::cout << "[WARNING] Interstellar has memory.* enabled, you have been warned." << std::endl;
         }

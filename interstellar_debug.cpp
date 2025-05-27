@@ -2323,7 +2323,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
 
     void push(lua_State* L, UMODULE hndle)
     {
-        Tracker::add("debug", cleanup);
+        Tracker::on_close("debug", cleanup);
 
         lua::pushvalue(L, indexer::global);
         lua::getfield(L, -1, "debug");

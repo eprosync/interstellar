@@ -1502,8 +1502,8 @@ namespace INTERSTELLAR_NAMESPACE {
         extern void destroy(std::string name);
         extern void pre_remove(API::lua_State* L);
         extern void post_remove(API::lua_State* L);
-        extern void add(std::string name, lua_Closure callback);
-        extern void remove(std::string name);
+        extern void on_open(std::string name, lua_Closure callback);
+        extern void on_close(std::string name, lua_Closure callback);
         extern inline void init();
     }
 

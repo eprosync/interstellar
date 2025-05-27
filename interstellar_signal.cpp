@@ -521,7 +521,7 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
     }
 
     void push(API::lua_State* L, UMODULE hndle) {
-        Tracker::add("signal", cleanup);
+        Tracker::on_close("signal", cleanup);
 
         lua::newtable(L);
 

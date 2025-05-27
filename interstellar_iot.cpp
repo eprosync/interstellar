@@ -2774,7 +2774,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
     }
 
     void api() {
-        Tracker::add("iot", cleanup);
+        Tracker::on_close("iot", cleanup);
         Reflection::add("iot", push);
     }
 }
