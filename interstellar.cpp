@@ -2086,9 +2086,41 @@ namespace INTERSTELLAR_NAMESPACE {
         }
 
         namespace Task {
+            typedef void (*lua_Task_Error) (API::lua_State* L, std::string error);
+
+            std::unordered_map<std::string, lua_Task_Error>& get_on_error()
+            {
+                static std::unordered_map<std::string, lua_Task_Error> m = std::unordered_map<std::string, lua_Task_Error>();
+                return m;
+            }
+
+            void add_error(std::string name, lua_Task_Error callback)
+            {
+                auto& on_error = get_on_error();
+                on_error.emplace(name, callback);
+            }
+
+            void remove_error(std::string name)
+            {
+                auto& on_error = get_on_error();
+                on_error.erase(name);
+            }
+
             std::unordered_set<lua_State*>& get_tracing()
             {
                 static std::unordered_set<lua_State*> m;
+                return m;
+            }
+
+            std::unordered_map<lua_State*, std::vector<int>>& get_defers()
+            {
+                static std::unordered_map<lua_State*, std::vector<int>> m;
+                return m;
+            }
+
+            std::unordered_map<lua_State*, std::vector<std::pair<std::chrono::steady_clock::time_point, int>>>& get_timers()
+            {
+                static std::unordered_map<lua_State*, std::vector<std::pair<std::chrono::steady_clock::time_point, int>>> m;
                 return m;
             }
 
@@ -2100,14 +2132,14 @@ namespace INTERSTELLAR_NAMESPACE {
 
             void push(lua_State* L)
             {
-                std::unique_lock<std::mutex> guard(*Task::mtx());
+                std::lock_guard<std::mutex> guard(*mtx());
                 auto& in_threading = get_tracing();
                 in_threading.emplace(L);
             }
 
             void pop(lua_State* L)
             {
-                std::unique_lock<std::mutex> guard(*Task::mtx());
+                std::lock_guard<std::mutex> guard(*mtx());
                 auto& in_threading = get_tracing();
                 in_threading.erase(L);
             }
@@ -2120,30 +2152,209 @@ namespace INTERSTELLAR_NAMESPACE {
                 return 1;
             }
 
+            int ldefer(lua_State* L)
+            {
+                luaL::checkfunction(L, 1);
+                std::lock_guard<std::mutex> guard(*mtx());
+                auto& defers = get_defers();
+                if (defers.find(L) == defers.end()) {
+                    defers.emplace(L, std::vector<int>());
+                }
+                defers[L].push_back(luaL::newref(L, 1));
+                return 0;
+            }
+
+            int ldelay(lua_State* L)
+            {
+                double delay = luaL::checknumber(L, 1);
+                luaL::checkfunction(L, 2);
+                std::lock_guard<std::mutex> guard(*mtx());
+                auto& defers = get_timers();
+                if (defers.find(L) == defers.end()) {
+                    defers.emplace(L, std::vector<std::pair<std::chrono::steady_clock::time_point, int>>());
+                }
+                auto duration = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    std::chrono::duration<double>(delay)
+                );
+                defers[L].push_back(std::pair(std::chrono::steady_clock::now() + duration, luaL::newref(L, 2)));
+                return 0;
+            }
+
             Signal::Handle* signal()
             {
                 static Signal::Handle* tasker = Signal::create();
                 return tasker;
             }
 
+            void runtime_threaded(lua_State* L)
+            {
+                static Signal::Handle* tasker = signal();
+                auto lock = Tracker::lock(L);
+                Task::push(L);
+
+                std::unique_lock<std::mutex> guard(*mtx());
+
+                auto& defers = get_defers();
+                auto idefers = defers.find(L);
+                if (idefers != defers.end()) {
+                    auto& list = idefers->second;
+                    for (int entry : list) {
+                        lua::pushref(L, entry);
+                        luaL::rmref(L, entry);
+
+                        guard.unlock();
+                        if (lua::tcall(L, 0, 0)) {
+                            std::string err = lua::tocstring(L, -1);
+                            lua::pop(L);
+                            auto& on_error = get_on_error();
+                            for (auto const& handle : on_error) handle.second(L, err);
+                        }
+                        guard.lock();
+
+                        auto it = std::find(list.begin(), list.end(), entry);
+                        if (it != list.end()) list.erase(it);
+                    }
+                }
+
+                auto& timers = get_timers();
+                auto itimers = timers.find(L);
+                if (itimers != timers.end()) {
+                    auto& list = itimers->second;
+                    auto clock = std::chrono::steady_clock::now();
+                    for (auto& entry : list) {
+
+                        if (clock < entry.first) {
+                            continue;
+                        }
+
+                        lua::pushref(L, entry.second);
+                        luaL::rmref(L, entry.second);
+
+                        guard.unlock();
+                        if (lua::tcall(L, 0, 0)) {
+                            std::string err = lua::tocstring(L, -1);
+                            lua::pop(L);
+                            auto& on_error = get_on_error();
+                            for (auto const& handle : on_error) handle.second(L, err);
+                        }
+                        guard.lock();
+
+                        auto it = std::find(list.begin(), list.end(), entry);
+                        if (it != list.end()) list.erase(it);
+                    }
+                }
+
+                guard.unlock();
+
+                if (tasker->has(L, "think")) tasker->fire(L, "think");
+
+                auto& dispatch = get_threaded();
+                for (auto& [key, callback] : dispatch) {
+                    callback(L);
+                }
+
+                Task::pop(L);
+                if (lock.owns_lock()) lock.unlock(); lock.release();
+            }
+
             void runtime()
             {
                 static Signal::Handle* tasker = signal();
+
+                std::unique_lock<std::mutex> guard(*mtx());
+
                 for (auto& state : Tracker::get_states()) {
                     lua_State* L = state.second;
                     if (Tracker::is_threaded(L)) continue;
+
+                    auto& defers = get_defers();
+                    auto idefers = defers.find(L);
+                    if (idefers != defers.end()) {
+                        auto& list = idefers->second;
+                        for (auto& entry : list) {
+
+                            lua::pushref(L, entry);
+                            luaL::rmref(L, entry);
+
+                            guard.unlock();
+                            if (lua::tcall(L, 0, 0)) {
+                                std::string err = lua::tocstring(L, -1);
+                                lua::pop(L);
+                                auto& on_error = get_on_error();
+                                for (auto const& handle : on_error) handle.second(L, err);
+                            }
+                            guard.lock();
+
+                            auto it = std::find(list.begin(), list.end(), entry);
+                            if (it != list.end()) list.erase(it);
+                        }
+                    }
+
+                    auto& timers = get_timers();
+                    auto itimers = timers.find(L);
+                    if (itimers != timers.end()) {
+                        auto& list = itimers->second;
+                        auto clock = std::chrono::steady_clock::now();
+                        for (auto& entry : list) {
+
+                            if (clock < entry.first) {
+                                continue;
+                            }
+
+                            lua::pushref(L, entry.second);
+                            luaL::rmref(L, entry.second);
+
+                            guard.unlock();
+                            if (lua::tcall(L, 0, 0)) {
+                                std::string err = lua::tocstring(L, -1);
+                                lua::pop(L);
+                                auto& on_error = get_on_error();
+                                for (auto const& handle : on_error) handle.second(L, err);
+                            }
+                            guard.lock();
+
+                            auto it = std::find(list.begin(), list.end(), entry);
+                            if (it != list.end()) list.erase(it);
+                        }
+                    }
+
                     if (!tasker->has(L, "think")) continue;
+                    guard.unlock();
                     tasker->fire(L, "think");
+                    guard.lock();
                 }
+
+                guard.unlock();
             }
 
-            void setup(lua_State* L, UMODULE _)
+            void cleanup(lua_State* L)
+            {
+                std::lock_guard<std::mutex> guard(*mtx());
+                auto& defers = get_defers();
+                defers.erase(L);
+                auto& timers = get_timers();
+                timers.erase(L);
+            }
+
+            void push_stack(lua_State* L, UMODULE _)
             {
                 static Signal::Handle* tasker = signal();
                 tasker->api_imm(L, "think");
 
                 lua::pushcfunction(L, lis_threaded);
                 lua::setfield(L, -2, "isthreaded");
+
+                lua::pushcfunction(L, ldefer);
+                lua::setfield(L, -2, "defer");
+
+                lua::pushcfunction(L, ldelay);
+                lua::setfield(L, -2, "delay");
+            }
+
+            void api()
+            {
+                Tracker::on_close("task", cleanup);
+                Reflection::add("task", push_stack);
             }
         }
 
@@ -2188,15 +2399,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
                 std::thread([L]() {
                     while (Tracker::is_state(L) != nullptr) {
-                        auto lock = Tracker::lock(L);
-                        Task::push(L);
-                        if (tasker->has(L, "think")) tasker->fire(L, "think");
-                        auto& dispatch = get_threaded();
-                        for (auto& [key, callback] : dispatch) {
-                            callback(L);
-                        }
-                        Task::pop(L);
-                        if (lock.owns_lock()) lock.unlock(); lock.release();
+                        Task::runtime_threaded(L);
                     }
                 }).detach();
             }
@@ -2276,7 +2479,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         Tracker::init();
         Reflection::api();
-        Reflection::add("task", Task::setup);
+        Reflection::Task::api();
         Signal::api();
         Coroutine::api();
         Buffer::api();
@@ -2700,7 +2903,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
             int pushtable(lua_State* from) {
                 lua_State* to = from_class(from, 1); if (to == nullptr) return 0;
                 luaL::checktable(from, 2);
-                Reflection::transfer_table(from, to, 2);
+                Reflection::transfer_table(from, to, 2); return 0;
             }
 
             int pushvalue(lua_State* L)

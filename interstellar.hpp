@@ -1551,6 +1551,12 @@ namespace INTERSTELLAR_NAMESPACE {
     {
         typedef void (*lua_Threaded) (API::lua_State* L);
         typedef void (*lua_Runtime) ();
+
+        namespace Task {
+            typedef void (*lua_Task_Error) (API::lua_State* L, std::string error);
+            extern void add_error(std::string name, lua_Task_Error callback);
+            extern void remove_error(std::string name);
+        }
         
         extern void on_threaded(std::string name, lua_Threaded callback);
         extern void on_runtime(std::string name, lua_Runtime callback);
