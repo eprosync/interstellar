@@ -507,8 +507,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         else if (lua::iscfunction(L, 1)) {
             using namespace Engine;
             TValue* value = lua::toraw(L, 1);
-            GCfuncC* func = funcV(value).c;
-            push_address(L, (void*)func->f);
+            GCfunc* func = funcV(value);
+            push_address(L, (void*)func->c.f);
             return 1;
         }
         else if (lua::islfunction(L, 1)) {

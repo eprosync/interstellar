@@ -96,11 +96,14 @@ namespace INTERSTELLAR_NAMESPACE {
         #endif
 
         #ifndef INTERSTELLAR_EXTERNAL
-            #include "luajit/lua.hpp"
-            #include "luajit/lj_state.h"
-            #include "luajit/lj_gc.h"
-            #include "luajit/lj_obj.h"
-            #include "luajit/lj_func.h"
+            #pragma comment (lib, "../luajit/src/lua51.lib")
+            #include "luajit/src/lua.hpp"
+            #include "luajit/src/lj_state.h"
+            #include "luajit/src/lj_gc.h"
+            #include "luajit/src/lj_obj.h"
+            #include "luajit/src/lj_func.h"
+            #include "luajit/src/lj_frame.h"
+            #include "luajit/src/lj_bc.h"
         #else
             // Hi, this is the one-shot section of required LuaJIT files.
             // This entire section here is from Mike Pall, see his license bellow.
