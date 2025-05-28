@@ -39,23 +39,23 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
         on_error.erase(name);
     }
 
-    void runtime()
+    void runtime_threaded(lua_State* T)
     {
         std::unique_lock<std::mutex> lock_guard(dethread_lock);
-        if (queue.size() > 0)
-        {
-            for (auto& result : queue) {
+
+        if (queue.size() > 0) {
+            for (auto it = queue.begin(); it != queue.end(); ) {
+                auto& result = *it;
                 uintptr_t id = std::get<0>(result);
                 lua_State* L = Tracker::is_state(id);
-                if (L == nullptr) continue;
+
+                if (L != T) {
+                    ++it;
+                    continue;
+                }
+
                 int reference = std::get<1>(result);
                 std::string data = std::get<2>(result);
-
-                std::unique_lock<std::mutex> guard;
-                bool threaded = Tracker::is_threaded(L);
-                if (threaded) {
-                    guard = Tracker::lock(L);
-                }
 
                 lua::pushref(L, reference);
                 lua::pushcstring(L, data);
@@ -69,10 +69,47 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
 
                 luaL::rmref(L, reference);
 
-                if (guard.owns_lock()) guard.unlock(); guard.release();
+                it = queue.erase(it);
             }
         }
-        queue.clear();
+
+        lock_guard.unlock();
+    }
+
+    void runtime()
+    {
+        std::unique_lock<std::mutex> lock_guard(dethread_lock);
+
+        if (queue.size() > 0) {
+            for (auto it = queue.begin(); it != queue.end(); ) {
+                auto& result = *it;
+                uintptr_t id = std::get<0>(result);
+                lua_State* L = Tracker::is_state(id);
+
+                if (L == nullptr || Tracker::is_threaded(L)) {
+                    ++it;
+                    continue;
+                }
+
+                int reference = std::get<1>(result);
+                std::string data = std::get<2>(result);
+
+                lua::pushref(L, reference);
+                lua::pushcstring(L, data);
+
+                if (lua::tcall(L, 1, 0)) {
+                    std::string err = lua::tocstring(L, -1);
+                    lua::pop(L);
+                    auto& on_error = get_on_error();
+                    for (auto const& handle : on_error) handle.second(L, err);
+                }
+
+                luaL::rmref(L, reference);
+
+                it = queue.erase(it);
+            }
+        }
+
         lock_guard.unlock();
     }
 
@@ -360,6 +397,8 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
     }
 
     void api() {
+        Reflection::on_threaded("lxz", runtime_threaded);
+        Reflection::on_runtime("lxz", runtime);
         Reflection::add("lxz", push);
     }
 }

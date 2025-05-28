@@ -84,6 +84,79 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
         return 0;
     }
 
+    int _addli(lua_State* L)
+    {
+        std::string identity = luaL::checkcstring(L, 1);
+        luaL::checklfunction(L, 2);
+
+        lua::pushvalue(L, upvalueindex(1));
+        Handle* handle = (Handle*)luaL::checklightuserdata(L, -1);
+        lua::pop(L);
+
+        lua::pushvalue(L, upvalueindex(2));
+        std::string name = luaL::checkcstring(L, -1);
+        lua::pop(L);
+
+        handle->addl(L, name, identity, 2);
+
+        return 0;
+    }
+
+    int _connectli(lua_State* L)
+    {
+        luaL::checklfunction(L, 1);
+        std::string identity = luaL::checkcstring(L, 2);
+
+        lua::pushvalue(L, upvalueindex(1));
+        Handle* handle = (Handle*)luaL::checklightuserdata(L, -1);
+        lua::pop(L);
+
+        lua::pushvalue(L, upvalueindex(2));
+        std::string name = luaL::checkcstring(L, -1);
+        lua::pop(L);
+
+        handle->addl(L, name, identity, 1);
+
+        return 0;
+    }
+
+    int _getli(lua_State* L)
+    {
+        std::string identity = luaL::checkcstring(L, 1);
+
+        lua::pushvalue(L, upvalueindex(1));
+        Handle* handle = (Handle*)luaL::checklightuserdata(L, -1);
+        lua::pop(L);
+
+        lua::pushvalue(L, upvalueindex(2));
+        std::string name = luaL::checkcstring(L, -1);
+        lua::pop(L);
+
+        if (int index = handle->getl(L, name, identity) != 0) {
+            lua::pushref(L, index);
+            return 1;
+        }
+
+        return 0;
+    }
+
+    int _removeli(lua_State* L)
+    {
+        std::string identity = luaL::checkcstring(L, 1);
+
+        lua::pushvalue(L, upvalueindex(1));
+        Handle* handle = (Handle*)luaL::checklightuserdata(L, -1);
+        lua::pop(L);
+
+        lua::pushvalue(L, upvalueindex(2));
+        std::string name = luaL::checkcstring(L, -1);
+        lua::pop(L);
+
+        handle->removel(L, name, identity);
+
+        return 0;
+    }
+
     std::vector<Handle*> handles;
 
     void cleanup(lua_State* L)
@@ -225,6 +298,39 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
 
         lua::pushlightuserdata(L, this);
         lua::pushcclosure(L, _removel, 1);
+        lua::pushvalue(L, -1);
+        lua::setfield(L, -3, "remove");
+        lua::setfield(L, -2, "disconnect");
+    }
+
+    void Handle::api_imm(lua_State* L, std::string name)
+    {
+        lua::newtable(L);
+        this->api_funcs_imm(L, name);
+    }
+
+    void Handle::api_funcs_imm(lua_State* L, std::string name)
+    {
+        lua::pushlightuserdata(L, this);
+        lua::pushcstring(L, name);
+        lua::pushcclosure(L, _addli, 2);
+        lua::setfield(L, -2, "add");
+
+        lua::pushlightuserdata(L, this);
+        lua::pushcstring(L, name);
+        lua::pushcclosure(L, _connectli, 2);
+        lua::setfield(L, -2, "connect");
+
+        lua::pushlightuserdata(L, this);
+        lua::pushcstring(L, name);
+        lua::pushcclosure(L, _getli, 2);
+        lua::pushvalue(L, -1);
+        lua::setfield(L, -3, "get");
+        lua::setfield(L, -2, "connection");
+
+        lua::pushlightuserdata(L, this);
+        lua::pushcstring(L, name);
+        lua::pushcclosure(L, _removeli, 2);
         lua::pushvalue(L, -1);
         lua::setfield(L, -3, "remove");
         lua::setfield(L, -2, "disconnect");

@@ -6,7 +6,6 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
     extern void add_error(std::string name, lua_LXZ_Error callback);
     extern void remove_error(std::string name);
 
-    extern void runtime();
     extern void push(API::lua_State* L, UMODULE hndle);
     extern void api();
 }

@@ -277,13 +277,17 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 last_uploadNow = uploadNow;
 
                 std::lock_guard<std::mutex> http_lock_guard(http_progress_lock);
-                http_progress.emplace_back(std::tuple<uintptr_t, int, std::string, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t>(
-                    id, reference_progress, url,
-                    downloadTotal,
-                    downloadNow,
-                    uploadTotal,
-                    uploadNow
-                ));
+
+                if (Tracker::is_state(id)) {
+                    http_progress.emplace_back(std::tuple<uintptr_t, int, std::string, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t>(
+                        id, reference_progress, url,
+                        downloadTotal,
+                        downloadNow,
+                        uploadTotal,
+                        uploadNow
+                    ));
+                }
+
                 return true;
             });
 
@@ -306,13 +310,15 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             if (reference_progress != 0) {
                 std::lock_guard<std::mutex> http_lock_guard(http_progress_lock);
-                http_progress.emplace_back(std::tuple<uintptr_t, int, std::string, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t>(
-                    id, reference_progress, url,
-                    -1,
-                    -1,
-                    -1,
-                    -1
-                ));
+                if (Tracker::is_state(id)) {
+                    http_progress.emplace_back(std::tuple<uintptr_t, int, std::string, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t>(
+                        id, reference_progress, url,
+                        -1,
+                        -1,
+                        -1,
+                        -1
+                    ));
+                }
             }
 
             std::lock_guard<std::mutex> http_lock_guard(http_response_lock);
@@ -445,7 +451,9 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         partial.url = url;
                         partial.reason = "";
                         std::lock_guard<std::mutex> stream_lock_guard(stream_response_lock);
-                        stream_responses.emplace_back(id, reference, partial);
+                        if (Tracker::is_state(id)) {
+                            stream_responses.emplace_back(id, reference, partial);
+                        }
                     }
                     return true;
                 }
@@ -463,13 +471,15 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 }
 
                 std::lock_guard<std::mutex> http_lock_guard(http_progress_lock);
-                http_progress.emplace_back(std::tuple<uintptr_t, int, std::string, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t>(
-                    id, reference_progress, url,
-                    downloadTotal,
-                    downloadNow,
-                    uploadTotal,
-                    uploadNow
-                ));
+                if (Tracker::is_state(id)) {
+                    http_progress.emplace_back(std::tuple<uintptr_t, int, std::string, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t>(
+                        id, reference_progress, url,
+                        downloadTotal,
+                        downloadNow,
+                        uploadTotal,
+                        uploadNow
+                    ));
+                }
                 return true;
             });
 
@@ -492,13 +502,15 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             if (reference_progress != 0) {
                 std::lock_guard<std::mutex> http_lock_guard(http_progress_lock);
-                http_progress.emplace_back(std::tuple<uintptr_t, int, std::string, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t>(
-                    id, reference_progress, url,
-                    -1,
-                    -1,
-                    -1,
-                    -1
-                ));
+                if (Tracker::is_state(id)) {
+                    http_progress.emplace_back(std::tuple<uintptr_t, int, std::string, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t, cpr::cpr_off_t>(
+                        id, reference_progress, url,
+                        -1,
+                        -1,
+                        -1,
+                        -1
+                    ));
+                }
             }
 
             std::lock_guard<std::mutex> stream_lock_guard(stream_response_lock);
@@ -2331,15 +2343,21 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         return 1;
     }
 
-    void runtime()
+    void runtime_threaded(lua_State* T)
     {
         std::unique_lock<std::mutex> lock_progress(http_progress_lock);
-        if (http_progress.size() > 0)
-        {
-            for (auto& result : http_progress) {
+
+        if (http_progress.size() > 0) {
+            for (auto it = http_progress.begin(); it != http_progress.end(); ) {
+                auto& result = *it;
                 uintptr_t id = std::get<0>(result);
                 lua_State* L = Tracker::is_state(id);
-                if (L == nullptr) continue;
+
+                if (L != T) {
+                    ++it;
+                    continue;
+                }
+
                 int reference = std::get<1>(result);
                 std::string url = std::get<2>(result);
                 cpr::cpr_off_t downloadTotal = std::get<3>(result);
@@ -2349,6 +2367,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
                 if (downloadTotal == -1 && downloadNow == -1 && uploadTotal == -1 && uploadNow == -1) {
                     luaL::rmref(L, reference);
+                    it = http_progress.erase(it);
                     continue;
                 }
 
@@ -2398,26 +2417,29 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 }
 
                 lua::pop(L);
+
+                it = http_progress.erase(it);
             }
-            http_progress.clear();
         }
+
         lock_progress.unlock();
 
+
         std::unique_lock<std::mutex> lock_http(http_response_lock);
-        if (http_responses.size() > 0)
-        {
-            for (auto& result : http_responses) {
+
+        if (http_responses.size() > 0) {
+            for (auto it = http_responses.begin(); it != http_responses.end(); ) {
+                auto& result = *it;
                 uintptr_t id = std::get<0>(result);
                 lua_State* L = Tracker::is_state(id);
-                if (L == nullptr) continue;
+
+                if (L != T) {
+                    ++it;
+                    continue;
+                }
+
                 int reference = std::get<1>(result);
                 cpr::Response response = std::get<2>(result);
-
-                std::unique_lock<std::mutex> guard;
-                bool threaded = Tracker::is_threaded(L);
-                if (threaded) {
-                    guard = Tracker::lock(L);
-                }
 
                 lua::pushref(L, reference);
                 luaL::rmref(L, reference);
@@ -2452,7 +2474,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     for (auto const& handle : on_error) handle.second(L, "http - " + response.url.str(), err);
                 }
 
-                if (guard.owns_lock()) guard.unlock(); guard.release();
+                it = http_responses.erase(it);
 
                 std::lock_guard<std::mutex> progress_cancel_lock_guard(progress_cancel_lock);
                 if (!progress_cancel.empty()) {
@@ -2463,27 +2485,151 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     }
                 }
             }
-            http_responses.clear();
         }
+
         lock_http.unlock();
 
-        std::unique_lock<std::mutex> lock_stream(stream_response_lock);
-        if (stream_responses.size() > 0)
-        {
-            for (auto& result : stream_responses) {
+        if (sockets.size() > 0) {
+            for (auto it = sockets.begin(); it != sockets.end(); ) {
+                auto& socket_entry = *it;
+
+                lua_State* L = Tracker::is_state(socket_entry.first);
+
+                if (L != T) {
+                    ++it;
+                    continue;
+                }
+
+                auto& handlers = socket_entry.second;
+                for (auto& socket : handlers) {
+                    socket->dethreader();
+                }
+
+                ++it;
+            }
+        }
+
+        if (serves.size() > 0) {
+            for (auto it = serves.begin(); it != serves.end(); ) {
+                auto& serve_entry = *it;
+
+                lua_State* L = Tracker::is_state(serve_entry.first);
+
+                if (L != T) {
+                    ++it;
+                    continue;
+                }
+
+                auto& handlers = serve_entry.second;
+                for (auto& serve : handlers) {
+                    serve.second->sync();
+                }
+
+                ++it;
+            }
+        }
+    }
+
+    void runtime()
+    {
+        std::unique_lock<std::mutex> lock_progress(http_progress_lock);
+
+        if (http_progress.size() > 0) {
+            for (auto it = http_progress.begin(); it != http_progress.end(); ) {
+                auto& result = *it;
                 uintptr_t id = std::get<0>(result);
                 lua_State* L = Tracker::is_state(id);
-                if (L == nullptr) continue;
-                int reference = std::get<1>(result);
-                cpr::Response response = std::get<2>(result);
 
-                std::unique_lock<std::mutex> guard;
-                bool threaded = Tracker::is_threaded(L);
-                if (threaded) {
-                    guard = Tracker::lock(L);
+                if (L == nullptr || Tracker::is_threaded(L)) {
+                    ++it;
+                    continue;
+                }
+
+                int reference = std::get<1>(result);
+                std::string url = std::get<2>(result);
+                cpr::cpr_off_t downloadTotal = std::get<3>(result);
+                cpr::cpr_off_t downloadNow = std::get<4>(result);
+                cpr::cpr_off_t uploadTotal = std::get<5>(result);
+                cpr::cpr_off_t uploadNow = std::get<6>(result);
+
+                if (downloadTotal == -1 && downloadNow == -1 && uploadTotal == -1 && uploadNow == -1) {
+                    luaL::rmref(L, reference);
+                    it = http_progress.erase(it);
+                    continue;
                 }
 
                 lua::pushref(L, reference);
+
+                lua::pushnumber(L, downloadTotal);
+                lua::pushnumber(L, downloadNow);
+                lua::pushnumber(L, uploadTotal);
+                lua::pushnumber(L, uploadNow);
+
+                if (lua::tcall(L, 4, 1)) {
+                    std::string err = lua::tocstring(L, -1);
+                    auto& on_error = get_on_error();
+                    for (auto const& handle : on_error) handle.second(L, "progress - " + url, err);
+                    std::lock_guard<std::mutex> cancel_lock_guard(progress_cancel_lock);
+                    if (!progress_cancel.empty()) {
+                        bool should = true;
+
+                        for (auto& cancel : progress_cancel) {
+                            if (cancel.first == id && cancel.second == reference) {
+                                should = false;
+                                break;
+                            }
+                        }
+
+                        if (should) {
+                            progress_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
+                        }
+                    }
+                }
+                else if (lua::isboolean(L, -1) && lua::toboolean(L, -1) == false) {
+                    std::lock_guard<std::mutex> cancel_lock_guard(progress_cancel_lock);
+                    if (!progress_cancel.empty()) {
+                        bool should = true;
+
+                        for (auto& cancel : progress_cancel) {
+                            if (cancel.first == id && cancel.second == reference) {
+                                should = false;
+                                break;
+                            }
+                        }
+
+                        if (should) {
+                            progress_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
+                        }
+                    }
+                }
+
+                lua::pop(L);
+
+                it = http_progress.erase(it);
+            }
+        }
+
+        lock_progress.unlock();
+
+
+        std::unique_lock<std::mutex> lock_http(http_response_lock);
+
+        if (http_responses.size() > 0) {
+            for (auto it = http_responses.begin(); it != http_responses.end(); ) {
+                auto& result = *it;
+                uintptr_t id = std::get<0>(result);
+                lua_State* L = Tracker::is_state(id);
+
+                if (L == nullptr || Tracker::is_threaded(L)) {
+                    ++it;
+                    continue;
+                }
+
+                int reference = std::get<1>(result);
+                cpr::Response response = std::get<2>(result);
+
+                lua::pushref(L, reference);
+                luaL::rmref(L, reference);
 
                 lua::newtable(L);
 
@@ -2508,85 +2654,37 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 }
                 lua::setfield(L, -2, "headers");
 
-                if (lua::tcall(L, 1, 1)) {
+                if (lua::tcall(L, 1, 0)) {
                     std::string err = lua::tocstring(L, -1);
+                    lua::pop(L);
                     auto& on_error = get_on_error();
-                    for (auto const& handle : on_error) handle.second(L, "stream - " + response.url.str(), err);
-                    std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
-                    if (!stream_cancel.empty()) {
-                        bool should = true;
-
-                        for (auto& cancel : stream_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                should = false;
-                                break;
-                            }
-                        }
-
-                        if (should) {
-                            stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
-                        }
-                    }
-                }
-                else if (lua::isboolean(L, -1) && lua::toboolean(L, -1) == false) {
-                    std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
-                    if (!stream_cancel.empty()) {
-                        bool should = true;
-
-                        for (auto& cancel : stream_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                should = false;
-                                break;
-                            }
-                        }
-
-                        if (should) {
-                            stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
-                        }
-                    }
+                    for (auto const& handle : on_error) handle.second(L, "http - " + response.url.str(), err);
                 }
 
-                lua::pop(L);
+                it = http_responses.erase(it);
 
-                if (response.status_code != 100) {
-                    luaL::rmref(L, reference);
-
-                    if (guard.owns_lock()) guard.unlock(); guard.release();
-
-                    std::lock_guard<std::mutex> progress_cancel_lock_guard(progress_cancel_lock);
-                    if (!progress_cancel.empty()) {
-                        for (auto& cancel : progress_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                progress_cancel.erase(std::remove(progress_cancel.begin(), progress_cancel.end(), cancel), progress_cancel.end());
-                            }
+                std::lock_guard<std::mutex> progress_cancel_lock_guard(progress_cancel_lock);
+                if (!progress_cancel.empty()) {
+                    for (auto& cancel : progress_cancel) {
+                        if (cancel.first == id && cancel.second == reference) {
+                            progress_cancel.erase(std::remove(progress_cancel.begin(), progress_cancel.end(), cancel), progress_cancel.end());
                         }
                     }
-
-                    std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
-                    if (!stream_cancel.empty()) {
-                        for (auto& cancel : stream_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                stream_cancel.erase(std::remove(stream_cancel.begin(), stream_cancel.end(), cancel), stream_cancel.end());
-                            }
-                        }
-                    }
-                } else {
-                    if (guard.owns_lock()) guard.unlock(); guard.release();
                 }
             }
-            stream_responses.clear();
         }
-        lock_stream.unlock();
+
+        lock_http.unlock();
 
         if (sockets.size() > 0) {
-            for (auto& socket_entry : sockets) {
-                lua_State* L = Tracker::is_state(socket_entry.first);
-                if (L == nullptr) continue;
+            for (auto it = sockets.begin(); it != sockets.end(); ) {
+                auto& socket_entry = *it;
 
-                std::unique_lock<std::mutex> guard;
-                bool threaded = Tracker::is_threaded(L);
-                if (threaded) {
-                    guard = Tracker::lock(L);
+                lua_State* L = Tracker::is_state(socket_entry.first);
+
+                if (L == nullptr || Tracker::is_threaded(L)) {
+                    ++it;
+                    continue;
                 }
 
                 auto& handlers = socket_entry.second;
@@ -2594,19 +2692,19 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     socket->dethreader();
                 }
 
-                if (guard.owns_lock()) guard.unlock(); guard.release();
+                ++it;
             }
         }
 
         if (serves.size() > 0) {
-            for (auto& serve_entry : serves) {
-                lua_State* L = Tracker::is_state(serve_entry.first);
-                if (L == nullptr) continue;
+            for (auto it = serves.begin(); it != serves.end(); ) {
+                auto& serve_entry = *it;
 
-                std::unique_lock<std::mutex> guard;
-                bool threaded = Tracker::is_threaded(L);
-                if (threaded) {
-                    guard = Tracker::lock(L);
+                lua_State* L = Tracker::is_state(serve_entry.first);
+
+                if (L == nullptr || Tracker::is_threaded(L)) {
+                    ++it;
+                    continue;
                 }
 
                 auto& handlers = serve_entry.second;
@@ -2614,7 +2712,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     serve.second->sync();
                 }
 
-                if (guard.owns_lock()) guard.unlock(); guard.release();
+                ++it;
             }
         }
     }
@@ -2761,6 +2859,35 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
     void cleanup(lua_State* L)
     {
         uintptr_t id = Tracker::id(L);
+
+        if (http_progress.size() > 0) {
+            for (auto it = http_progress.begin(); it != http_progress.end(); ) {
+                auto& result = *it;
+                uintptr_t id = std::get<0>(result);
+
+                if ((lua_State*)id == L) {
+                    it = http_progress.erase(it);
+                    continue;
+                }
+
+                ++it;
+            }
+        }
+
+        if (http_responses.size() > 0) {
+            for (auto it = http_responses.begin(); it != http_responses.end(); ) {
+                auto& result = *it;
+                uintptr_t id = std::get<0>(result);
+
+                if ((lua_State*)id == L) {
+                    it = http_responses.erase(it);
+                    continue;
+                }
+
+                ++it;
+            }
+        }
+
         if (serves.size() > 0) {
             for (auto& serve_entry : serves) {
                 if (serve_entry.first != id) continue;
@@ -2775,6 +2902,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
     void api() {
         Tracker::on_close("iot", cleanup);
+        Reflection::on_threaded("iot", runtime_threaded);
+        Reflection::on_runtime("iot", runtime);
         Reflection::add("iot", push);
     }
 }

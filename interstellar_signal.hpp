@@ -19,6 +19,8 @@ namespace INTERSTELLAR_NAMESPACE::Signal {
         void removel(API::lua_State* L, std::string name, std::string identity);
         void api(API::lua_State* L);
         void api_funcs(API::lua_State* L);
+        void api_imm(API::lua_State* L, std::string name);
+        void api_funcs_imm(API::lua_State* L, std::string name);
         int size(API::lua_State* L, std::string name);
         bool has(API::lua_State* L, std::string name);
         void fire(API::lua_State* L, std::string name, int inputs = 0);

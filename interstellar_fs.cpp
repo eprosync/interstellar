@@ -670,24 +670,24 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return 1;
     }
 
-    void runtime()
+    void runtime_threaded(lua_State* T)
     {
         std::unique_lock<std::mutex> guard(async_lock);
 
         if (queue_read.size() > 0) {
-            for (auto& result : queue_read) {
+            for (auto it = queue_read.begin(); it != queue_read.end(); ) {
+                auto& result = *it;
                 uintptr_t id = std::get<0>(result);
                 lua_State* L = Tracker::is_state(id);
-                if (L == nullptr) continue;
+
+                if (L != T) {
+                    ++it;
+                    continue;
+                }
+
                 int reference = std::get<1>(result);
                 bool success = std::get<2>(result);
                 std::string data = std::get<3>(result);
-
-                std::unique_lock<std::mutex> guard;
-                bool threaded = Tracker::is_threaded(L);
-                if (threaded) {
-                    guard = Tracker::lock(L);
-                }
 
                 if (!success) {
                     auto& on_error = get_on_error();
@@ -709,24 +709,23 @@ namespace INTERSTELLAR_NAMESPACE::FS {
                     luaL::rmref(L, reference);
                 }
 
-                if (guard.owns_lock()) guard.unlock(); guard.release();
+                it = queue_read.erase(it);
             }
-            queue_read.clear();
         }
 
         if (queue_write.size() > 0) {
-            for (auto& result : queue_write) {
+            for (auto it = queue_write.begin(); it != queue_write.end(); ) {
+                auto& result = *it;
                 uintptr_t id = std::get<0>(result);
                 lua_State* L = Tracker::is_state(id);
-                if (L == nullptr) continue;
+
+                if (L != T) {
+                    ++it;
+                    continue;
+                }
+
                 int reference = std::get<1>(result);
                 bool success = std::get<2>(result);
-
-                std::unique_lock<std::mutex> guard;
-                bool threaded = Tracker::is_threaded(L);
-                if (threaded) {
-                    guard = Tracker::lock(L);
-                }
 
                 if (!success) {
                     auto& on_error = get_on_error();
@@ -747,24 +746,23 @@ namespace INTERSTELLAR_NAMESPACE::FS {
                     luaL::rmref(L, reference);
                 }
 
-                if (guard.owns_lock()) guard.unlock(); guard.release();
+                it = queue_write.erase(it);
             }
-            queue_write.clear();
         }
 
         if (queue_append.size() > 0) {
-            for (auto& result : queue_append) {
+            for (auto it = queue_append.begin(); it != queue_append.end(); ) {
+                auto& result = *it;
                 uintptr_t id = std::get<0>(result);
                 lua_State* L = Tracker::is_state(id);
-                if (L == nullptr) continue;
+
+                if (L != T) {
+                    ++it;
+                    continue;
+                }
+
                 int reference = std::get<1>(result);
                 bool success = std::get<2>(result);
-
-                std::unique_lock<std::mutex> guard;
-                bool threaded = Tracker::is_threaded(L);
-                if (threaded) {
-                    guard = Tracker::lock(L);
-                }
 
                 if (!success) {
                     auto& on_error = get_on_error();
@@ -785,9 +783,128 @@ namespace INTERSTELLAR_NAMESPACE::FS {
                     luaL::rmref(L, reference);
                 }
 
-                if (guard.owns_lock()) guard.unlock(); guard.release();
+                it = queue_append.erase(it);
             }
-            queue_write.clear();
+        }
+
+        guard.unlock();
+    }
+
+    void runtime()
+    {
+        std::unique_lock<std::mutex> guard(async_lock);
+
+        if (queue_read.size() > 0) {
+            for (auto it = queue_read.begin(); it != queue_read.end(); ) {
+                auto& result = *it;
+                uintptr_t id = std::get<0>(result);
+                lua_State* L = Tracker::is_state(id);
+
+                if (L == nullptr || Tracker::is_threaded(L)) {
+                    ++it;
+                    continue;
+                }
+
+                int reference = std::get<1>(result);
+                bool success = std::get<2>(result);
+                std::string data = std::get<3>(result);
+
+                if (!success) {
+                    auto& on_error = get_on_error();
+                    for (auto const& handle : on_error) handle.second(L, "fs.read, failed to open file for reading");
+                }
+                else if (reference > 0) {
+                    lua::pushref(L, reference);
+                    lua::pushcstring(L, data);
+
+                    if (lua::tcall(L, 1, 0)) {
+                        std::string err = lua::tocstring(L, -1);
+                        lua::pop(L);
+                        auto& on_error = get_on_error();
+                        for (auto const& handle : on_error) handle.second(L, err);
+                    }
+                }
+
+                if (reference > 0) {
+                    luaL::rmref(L, reference);
+                }
+
+                it = queue_read.erase(it);
+            }
+        }
+
+        if (queue_write.size() > 0) {
+            for (auto it = queue_write.begin(); it != queue_write.end(); ) {
+                auto& result = *it;
+                uintptr_t id = std::get<0>(result);
+                lua_State* L = Tracker::is_state(id);
+
+                if (L == nullptr || Tracker::is_threaded(L)) {
+                    ++it;
+                    continue;
+                }
+
+                int reference = std::get<1>(result);
+                bool success = std::get<2>(result);
+
+                if (!success) {
+                    auto& on_error = get_on_error();
+                    for (auto const& handle : on_error) handle.second(L, "fs.write, failed to open file for writing");
+                }
+                else if (reference > 0) {
+                    lua::pushref(L, reference);
+
+                    if (lua::tcall(L, 0, 0)) {
+                        std::string err = lua::tocstring(L, -1);
+                        lua::pop(L);
+                        auto& on_error = get_on_error();
+                        for (auto const& handle : on_error) handle.second(L, err);
+                    }
+                }
+
+                if (reference > 0) {
+                    luaL::rmref(L, reference);
+                }
+
+                it = queue_write.erase(it);
+            }
+        }
+
+        if (queue_append.size() > 0) {
+            for (auto it = queue_append.begin(); it != queue_append.end(); ) {
+                auto& result = *it;
+                uintptr_t id = std::get<0>(result);
+                lua_State* L = Tracker::is_state(id);
+
+                if (L == nullptr || Tracker::is_threaded(L)) {
+                    ++it;
+                    continue;
+                }
+
+                int reference = std::get<1>(result);
+                bool success = std::get<2>(result);
+
+                if (!success) {
+                    auto& on_error = get_on_error();
+                    for (auto const& handle : on_error) handle.second(L, "fs.append, failed to open file for appending");
+                }
+                else if (reference > 0) {
+                    lua::pushref(L, reference);
+
+                    if (lua::tcall(L, 0, 0)) {
+                        std::string err = lua::tocstring(L, -1);
+                        lua::pop(L);
+                        auto& on_error = get_on_error();
+                        for (auto const& handle : on_error) handle.second(L, err);
+                    }
+                }
+
+                if (reference > 0) {
+                    luaL::rmref(L, reference);
+                }
+
+                it = queue_append.erase(it);
+            }
         }
 
         guard.unlock();
@@ -847,6 +964,8 @@ namespace INTERSTELLAR_NAMESPACE::FS {
 
     void api(std::string root) {
         root_path = (root.size() > 0 ? root : get_root());
+        Reflection::on_threaded("fs", runtime_threaded);
+        Reflection::on_runtime("fs", runtime);
         Reflection::add("fs", push);
     }
 }

@@ -1549,6 +1549,13 @@ namespace INTERSTELLAR_NAMESPACE {
     // For state grabbing, this isn't internal (yet) so please find them yourself
 	namespace Reflection
     {
+        typedef void (*lua_Threaded) (API::lua_State* L);
+        typedef void (*lua_Runtime) ();
+        
+        extern void on_threaded(std::string name, lua_Threaded callback);
+        extern void on_runtime(std::string name, lua_Runtime callback);
+        extern void runtime();
+
         extern int transfer_table(API::lua_State* from, API::lua_State* to, int source, bool no_error = false);
         extern int transfer(API::lua_State* from, API::lua_State* to, int index, bool no_error = false);
 

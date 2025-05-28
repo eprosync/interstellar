@@ -2073,6 +2073,101 @@ namespace INTERSTELLAR_NAMESPACE {
             return "";
         }
 
+        std::unordered_map<std::string, lua_Threaded>& get_threaded()
+        {
+            static std::unordered_map<std::string, lua_Threaded> m;
+            return m;
+        }
+
+        void on_threaded(std::string name, lua_Threaded callback)
+        {
+            auto& dispatch = get_threaded();
+            dispatch.emplace(name, callback);
+        }
+
+        namespace Task {
+            std::unordered_set<lua_State*>& get_tracing()
+            {
+                static std::unordered_set<lua_State*> m;
+                return m;
+            }
+
+            std::unique_ptr<std::mutex>& mtx()
+            {
+                static std::unique_ptr<std::mutex> mtx = std::make_unique<std::mutex>();
+                return mtx;
+            }
+
+            void push(lua_State* L)
+            {
+                std::unique_lock<std::mutex> guard(*Task::mtx());
+                auto& in_threading = get_tracing();
+                in_threading.emplace(L);
+            }
+
+            void pop(lua_State* L)
+            {
+                std::unique_lock<std::mutex> guard(*Task::mtx());
+                auto& in_threading = get_tracing();
+                in_threading.erase(L);
+            }
+
+            int lis_threaded(lua_State* L)
+            {
+                std::lock_guard<std::mutex> guard(*mtx());
+                auto& in_threading = get_tracing();
+                lua::pushboolean(L, in_threading.find(L) != in_threading.end());
+                return 1;
+            }
+
+            Signal::Handle* signal()
+            {
+                static Signal::Handle* tasker = Signal::create();
+                return tasker;
+            }
+
+            void runtime()
+            {
+                static Signal::Handle* tasker = signal();
+                for (auto& state : Tracker::get_states()) {
+                    lua_State* L = state.second;
+                    if (Tracker::is_threaded(L)) continue;
+                    if (!tasker->has(L, "think")) continue;
+                    tasker->fire(L, "think");
+                }
+            }
+
+            void setup(lua_State* L, UMODULE _)
+            {
+                static Signal::Handle* tasker = signal();
+                tasker->api_imm(L, "think");
+
+                lua::pushcfunction(L, lis_threaded);
+                lua::setfield(L, -2, "isthreaded");
+            }
+        }
+
+        std::unordered_map<std::string, lua_Runtime>& get_runtimes()
+        {
+            static std::unordered_map<std::string, lua_Runtime> m;
+            return m;
+        }
+
+        void on_runtime(std::string name, lua_Runtime callback)
+        {
+            auto& dispatch = get_runtimes();
+            dispatch.emplace(name, callback);
+        }
+
+        void runtime()
+        {
+            auto& dispatch = get_runtimes();
+            for (auto& [key, callback] : dispatch) {
+                callback();
+            }
+            Task::runtime();
+        }
+
         lua_State* open(std::string name, bool internal, bool threaded)
         {
             lua_State* exists = Tracker::is_state(name);
@@ -2087,19 +2182,20 @@ namespace INTERSTELLAR_NAMESPACE {
             lua::gc(L, 1, -1);
 
             if (threaded) {
-                static Signal::Handle* tasker = Signal::create();
-
-                lua::pushvalue(L, indexer::global);
-                tasker->api(L);
-                lua::setfield(L, -2, "task");
-                lua::pop(L);
+                static Signal::Handle* tasker = Task::signal();
 
                 Tracker::listen(L, name, std::make_shared<std::mutex>(), internal);
 
                 std::thread([L]() {
                     while (Tracker::is_state(L) != nullptr) {
                         auto lock = Tracker::lock(L);
-                        tasker->fire(L, "think");
+                        Task::push(L);
+                        if (tasker->has(L, "think")) tasker->fire(L, "think");
+                        auto& dispatch = get_threaded();
+                        for (auto& [key, callback] : dispatch) {
+                            callback(L);
+                        }
+                        Task::pop(L);
                         if (lock.owns_lock()) lock.unlock(); lock.release();
                     }
                 }).detach();
@@ -2180,6 +2276,7 @@ namespace INTERSTELLAR_NAMESPACE {
 
         Tracker::init();
         Reflection::api();
+        Reflection::add("task", Task::setup);
         Signal::api();
         Coroutine::api();
         Buffer::api();
