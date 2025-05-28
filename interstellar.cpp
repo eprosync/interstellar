@@ -2288,6 +2288,12 @@ namespace INTERSTELLAR_NAMESPACE {
 
         return 0;
     }
+
+    void runtime()
+    {
+        Tracker::runtime();
+        Reflection::runtime();
+    }
 }
 
 namespace INTERSTELLAR_NAMESPACE::Reflection {

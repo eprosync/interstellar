@@ -1585,6 +1585,9 @@ namespace INTERSTELLAR_NAMESPACE {
 
     // Initializes and calls Internal's fetch API, returns a number for failure
     extern int init(std::string binary);
+
+    // The critical runtime responsible for all of interstellar
+    extern void runtime();
 }
 
 // Interstellar: Reflection
