@@ -2202,6 +2202,9 @@ namespace INTERSTELLAR_NAMESPACE {
                         lua::pushref(L, entry);
                         luaL::rmref(L, entry);
 
+                        auto it = std::find(list.begin(), list.end(), entry);
+                        if (it != list.end()) list.erase(it);
+
                         guard.unlock();
                         if (lua::tcall(L, 0, 0)) {
                             std::string err = lua::tocstring(L, -1);
@@ -2210,9 +2213,6 @@ namespace INTERSTELLAR_NAMESPACE {
                             for (auto const& handle : on_error) handle.second(L, err);
                         }
                         guard.lock();
-
-                        auto it = std::find(list.begin(), list.end(), entry);
-                        if (it != list.end()) list.erase(it);
                     }
                 }
 
@@ -2230,6 +2230,9 @@ namespace INTERSTELLAR_NAMESPACE {
                         lua::pushref(L, entry.second);
                         luaL::rmref(L, entry.second);
 
+                        auto it = std::find(list.begin(), list.end(), entry);
+                        if (it != list.end()) list.erase(it);
+
                         guard.unlock();
                         if (lua::tcall(L, 0, 0)) {
                             std::string err = lua::tocstring(L, -1);
@@ -2238,9 +2241,6 @@ namespace INTERSTELLAR_NAMESPACE {
                             for (auto const& handle : on_error) handle.second(L, err);
                         }
                         guard.lock();
-
-                        auto it = std::find(list.begin(), list.end(), entry);
-                        if (it != list.end()) list.erase(it);
                     }
                 }
 
@@ -2276,6 +2276,9 @@ namespace INTERSTELLAR_NAMESPACE {
                             lua::pushref(L, entry);
                             luaL::rmref(L, entry);
 
+                            auto it = std::find(list.begin(), list.end(), entry);
+                            if (it != list.end()) list.erase(it);
+
                             guard.unlock();
                             if (lua::tcall(L, 0, 0)) {
                                 std::string err = lua::tocstring(L, -1);
@@ -2284,9 +2287,6 @@ namespace INTERSTELLAR_NAMESPACE {
                                 for (auto const& handle : on_error) handle.second(L, err);
                             }
                             guard.lock();
-
-                            auto it = std::find(list.begin(), list.end(), entry);
-                            if (it != list.end()) list.erase(it);
                         }
                     }
 
@@ -2304,6 +2304,9 @@ namespace INTERSTELLAR_NAMESPACE {
                             lua::pushref(L, entry.second);
                             luaL::rmref(L, entry.second);
 
+                            auto it = std::find(list.begin(), list.end(), entry);
+                            if (it != list.end()) list.erase(it);
+
                             guard.unlock();
                             if (lua::tcall(L, 0, 0)) {
                                 std::string err = lua::tocstring(L, -1);
@@ -2312,9 +2315,6 @@ namespace INTERSTELLAR_NAMESPACE {
                                 for (auto const& handle : on_error) handle.second(L, err);
                             }
                             guard.lock();
-
-                            auto it = std::find(list.begin(), list.end(), entry);
-                            if (it != list.end()) list.erase(it);
                         }
                     }
 
