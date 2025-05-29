@@ -1,3 +1,4 @@
+#include <string.h>
 #include "interstellar_table.hpp"
 #include <rapidjson/document.h>
 #include <rapidjson/writer.h>
