@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "interstellar.hpp"
 #include "interstellar_bit.hpp"
 #include "interstellar_coroutine.hpp"
