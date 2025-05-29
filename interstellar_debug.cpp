@@ -1,8 +1,8 @@
 #include "interstellar_debug.hpp"
 #include <map>
 #include <unordered_map>
-#include <cstring>
 #include <string>
+#include <string.h>
 #include <sstream>
 #include <iomanip>
 #include <atomic>

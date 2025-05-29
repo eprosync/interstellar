@@ -1,3 +1,4 @@
+#include <string.h>
 #include "interstellar_lxz.hpp"
 #pragma comment (lib, "zlib.Lib")
 #pragma comment (lib, "Zstd.Lib")

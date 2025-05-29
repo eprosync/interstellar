@@ -8,17 +8,14 @@
 #include "interstellar_table.hpp"
 #include "interstellar_signal.hpp"
 #include "interstellar_buffer.hpp"
+
 #include <vector>
 #include <map>
 #include <unordered_map>
 #include <chrono>
-
-#include <vector>
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <string_view>
-#include <signal.h>
 #include <array>
 #include <sstream>
 #include <iomanip>

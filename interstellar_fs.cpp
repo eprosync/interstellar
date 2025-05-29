@@ -1,12 +1,14 @@
+#include <string.h>
+
 #include "interstellar_fs.hpp"
 #include "interstellar_buffer.hpp"
+
 #include <unordered_set>
 #include <unordered_map>
 #include <map>
 #include <sstream>
 #include <ostream>
 #include <fstream>
-#include <cstring>
 #include <string>
 #include <regex>
 #include <mutex>

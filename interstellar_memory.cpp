@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "interstellar_memory.hpp"
 #include "interstellar_os.hpp"
 
@@ -14,7 +16,6 @@
 #include <stdint.h>
 #endif
 
-#include <cstring>
 #include <string>
 #include <array>
 #include <map>
@@ -23,8 +24,8 @@
 #include <string_view>
 #include <sstream>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
+#include <iomanip>
 
 namespace INTERSTELLAR_NAMESPACE::Memory {
     using namespace API;
