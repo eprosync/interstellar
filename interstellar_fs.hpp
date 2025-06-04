@@ -14,26 +14,30 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return (std::filesystem::path{} / ... / args).string();
     }
 
-    extern std::string get_root();
-    extern bool within(std::string root_path, std::string file_path);
-    extern std::string localize(std::string root_path, std::string file_path);
+    extern std::string pwd();
+    extern std::string where();
+    extern bool within(const std::string& root_path, const std::string& file_path);
+    extern std::string localize(const std::string& root_path, const std::string& file_path);
     extern std::string forward(std::string path);
     extern std::string backward(std::string path);
-    extern std::string extname(std::string path);
-    extern std::string extname(std::string path, std::string replace);
-    extern std::string filename(std::string path);
-    extern std::string filename(std::string path, std::string replace);
-    extern std::string dirname(std::string path);
-    extern std::string dirname(std::string path, std::string replace);
-    extern std::string sanitize(std::string input);
-    extern bool isfile(std::string file_path);
-    extern bool isfolder(std::string folder_path);
-    extern bool makefolder(std::string folder_path);
-    extern bool delfolder(std::string folder_path);
-    extern bool delfile(std::string file_path);
-    extern std::string read(std::string file_path);
-    extern bool write(std::string file_path, std::string file_content);
-    extern bool append(std::string file_path, std::string file_content);
+    extern std::string extname(const std::string& path);
+    extern std::string extname(const std::string& path, const std::string& replace);
+    extern std::string filename(const std::string& path);
+    extern std::string filename(const std::string& path, const std::string& replace);
+    extern std::string dirname(const std::string& path);
+    extern std::string dirname(const std::string& path, const std::string& replace);
+    extern std::string sanitize(const std::string& input);
+    extern bool isfile(const std::string& file_path);
+    extern bool isfolder(const std::string& folder_path);
+    extern bool mkdir(const std::string& folder_path);
+    extern bool rmdir(const std::string& folder_path);
+    extern bool rmfile(const std::string& file_path);
+    extern bool rm(const std::string& file_path);
+    extern bool mv(const std::string& from, const std::string& to);
+    extern bool cp(const std::string& from, const std::string& to);
+    extern std::string read(const std::string& file_path);
+    extern bool write(const std::string& file_path, std::string file_content);
+    extern bool append(const std::string& file_path, std::string file_content);
 
     extern void push(API::lua_State* L, UMODULE hndle);
     extern void api(std::string root_path = "");

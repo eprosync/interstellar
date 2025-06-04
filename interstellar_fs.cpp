@@ -65,7 +65,11 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         on_error.erase(name);
     }
 
-    std::string get_root() {
+    std::string pwd() {
+        return std::filesystem::current_path().string();
+    }
+
+    std::string where() {
         #if defined(_WIN32)
             std::vector<char> buffer(MAX_PATH);
             DWORD length = 0;
@@ -121,13 +125,13 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         ".exe", ".scr", ".bat", ".com", ".csh", ".msi", ".vb", ".vbs", ".vbe", ".ws", ".wsf", ".wsh", ".ps1"
     };
 
-    bool within(std::string root_path, std::string file_path) {
+    bool within(const std::string& root_path, const std::string& file_path) {
         std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
         std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
         return full_path.string().rfind(root_path) == 0;
     }
 
-    std::string localize(std::string root_path, std::string file_path) {
+    std::string localize(const std::string& root_path, const std::string& file_path) {
         std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
         std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
 
@@ -169,12 +173,12 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return 1;
     }
 
-    std::string extname(std::string path) {
+    std::string extname(const std::string& path) {
         std::filesystem::path _path = path;
         return _path.extension().string();
     }
 
-    std::string extname(std::string path, std::string replace) {
+    std::string extname(const std::string& path, const std::string& replace) {
         std::filesystem::path _path = path;
         _path.replace_extension(replace);
         return _path.string();
@@ -191,12 +195,12 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return 1;
     }
 
-    std::string filename(std::string path) {
+    std::string filename(const std::string& path) {
         std::filesystem::path _path = path;
         return _path.filename().string();
     }
 
-    std::string filename(std::string path, std::string replace) {
+    std::string filename(const std::string& path, const std::string& replace) {
         std::filesystem::path _path = path;
         _path.replace_filename(replace);
         return _path.string();
@@ -213,12 +217,12 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return 1;
     }
 
-    std::string dirname(std::string path) {
+    std::string dirname(const std::string& path) {
         std::filesystem::path _path = path;
         return _path.parent_path().string();
     }
 
-    std::string dirname(std::string path, std::string replace) {
+    std::string dirname(const std::string& path, const std::string& replace) {
         std::filesystem::path _path = path;
         _path = std::filesystem::path(replace) / _path.filename();
         return _path.string();
@@ -235,7 +239,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return 1;
     }
 
-    std::string sanitize(std::string input) {
+    std::string sanitize(const std::string& input) {
         #ifdef _WIN32
         static const std::regex invalid_chars("[<>:\"|?*\n\r\t\b\f\v]");
         std::string sanitized = std::regex_replace(input, invalid_chars, "_");
@@ -283,7 +287,283 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return 1;
     }
 
-    std::string read(std::string file_path) {
+    bool isfile(const std::string& file_path) {
+        return std::filesystem::is_regular_file(file_path);
+    }
+
+    int isfile(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.isfile, attempt to escape directory");
+            return 0;
+        }
+
+        lua::pushboolean(L, std::filesystem::is_regular_file(full_path));
+
+        return 1;
+    }
+
+    bool isfolder(const std::string& folder_path) {
+        return std::filesystem::is_directory(folder_path);
+    }
+
+    int isfolder(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.isfolder, attempt to escape directory");
+            return 0;
+        }
+
+        lua::pushboolean(L, std::filesystem::is_directory(full_path));
+
+        return 1;
+    }
+
+    bool readable(const std::string& file_path)
+    {
+        std::error_code ec;
+        auto perms = std::filesystem::status(file_path, ec).permissions();
+        if ((perms & std::filesystem::perms::owner_read) != std::filesystem::perms::none &&
+            (perms & std::filesystem::perms::group_read) != std::filesystem::perms::none &&
+            (perms & std::filesystem::perms::others_read) != std::filesystem::perms::none) {
+            return true;
+        }
+        return false;
+    }
+
+    int readable(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.readable, attempt to escape directory");
+            return 0;
+        }
+
+        lua::pushboolean(L, readable(full_path.string()));
+
+        return 1;
+    }
+
+    bool writeable(const std::string& file_path)
+    {
+        std::error_code ec;
+        auto perms = std::filesystem::status(file_path, ec).permissions();
+        if ((perms & std::filesystem::perms::owner_write) != std::filesystem::perms::none &&
+            (perms & std::filesystem::perms::group_write) != std::filesystem::perms::none &&
+            (perms & std::filesystem::perms::others_write) != std::filesystem::perms::none) {
+            return true;
+        }
+        return false;
+    }
+
+    int writeable(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.writeable, attempt to escape directory");
+            return 0;
+        }
+
+        lua::pushboolean(L, writeable(full_path.string()));
+
+        return 1;
+    }
+
+    int scan(lua_State* L) {
+        std::string folder_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(folder_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.scan, attempt to escape directory");
+            return 0;
+        }
+
+        if (!std::filesystem::exists(full_path)) {
+            return 0;
+        }
+
+        lua::newtable(L);
+
+        size_t index = 1;
+
+        for (const auto& entry : std::filesystem::directory_iterator(full_path)) {
+            std::string filename = entry.path().filename().string();
+            lua::pushnumber(L, index++);
+            lua::pushcstring(L, filename);
+            lua::settable(L, -3);
+        }
+
+        return 1;
+    }
+
+    bool mkdir(const std::string& folder_path) {
+        return std::filesystem::create_directories(folder_path);
+    }
+
+    int mkdir(lua_State* L) {
+        std::string folder_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(folder_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.mkdir, attempt to escape directory");
+            return 0;
+        }
+
+        lua::pushboolean(L, std::filesystem::create_directories(full_path));
+
+        return 0;
+    }
+
+    bool rmdir(const std::string& folder_path) {
+        try {
+            return std::filesystem::remove_all(folder_path);
+        }
+        catch (std::exception& e) {
+            return false;
+        }
+    }
+
+    int rmdir(lua_State* L) {
+        std::string folder_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(folder_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.rmdir, attempt to escape directory");
+            return 0;
+        }
+
+        std::error_code ec;
+        std::uintmax_t count = std::filesystem::remove_all(full_path, ec);
+        lua::pushboolean(L, !ec && count > 0);
+        return 1;
+    }
+
+    bool rmfile(const std::string& file_path) {
+        return std::filesystem::remove(file_path);
+    }
+
+    int rmfile(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.rmfile, attempt to escape directory");
+            return 0;
+        }
+
+        std::error_code ec;
+        bool err = std::filesystem::remove(full_path, ec);
+        lua::pushboolean(L, !ec && !err);
+        return 1;
+    }
+
+    bool rm(const std::string& path) {
+        std::error_code ec;
+        std::uintmax_t count = std::filesystem::remove_all(path, ec);
+        return !ec && count > 0;
+    }
+
+    int rm(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
+
+        if (full_path.string().rfind(root_path) != 0) {
+            luaL::error(L, "fs.rm, attempt to escape directory");
+            return 0;
+        }
+
+        std::error_code ec;
+        std::uintmax_t count = std::filesystem::remove_all(full_path, ec);
+        lua::pushboolean(L, !ec && count > 0);
+        return 1;
+    }
+
+    bool mv(const std::string& from, const std::string& to) {
+        std::error_code ec;
+        std::filesystem::rename(from, to, ec);
+        return !ec;
+    }
+
+    int mv(lua_State* L) {
+        std::string from_path = luaL::checkcstring(L, 1);
+        std::string to_path = luaL::checkcstring(L, 2);
+
+        std::filesystem::path from_weak_path = std::filesystem::path(root_path) / std::filesystem::path(from_path);
+        std::filesystem::path from_full_path = std::filesystem::weakly_canonical(from_weak_path);
+
+        if (from_full_path.string().rfind(root_path) != 0) {
+            luaL::argerror(L, 1, "fs.mv, attempt to escape directory");
+            return 0;
+        }
+
+        std::filesystem::path to_weak_path = std::filesystem::path(root_path) / std::filesystem::path(to_path);
+        std::filesystem::path to_full_path = std::filesystem::weakly_canonical(to_weak_path);
+
+        if (to_full_path.string().rfind(root_path) != 0) {
+            luaL::argerror(L, 2, "fs.mv, attempt to escape directory");
+            return 0;
+        }
+
+        std::error_code ec;
+        std::filesystem::rename(from_full_path, to_full_path, ec);
+        lua::pushboolean(L, !ec);
+        return 1;
+    }
+
+    bool cp(const std::string& from, const std::string& to) {
+        std::error_code ec;
+        std::filesystem::copy(from, to,
+            std::filesystem::copy_options::recursive |
+            std::filesystem::copy_options::overwrite_existing,
+            ec);
+        return !ec;
+    }
+
+    int cp(lua_State* L) {
+        std::string from_path = luaL::checkcstring(L, 1);
+        std::string to_path = luaL::checkcstring(L, 2);
+
+        std::filesystem::path from_weak_path = std::filesystem::path(root_path) / std::filesystem::path(from_path);
+        std::filesystem::path from_full_path = std::filesystem::weakly_canonical(from_weak_path);
+
+        if (from_full_path.string().rfind(root_path) != 0) {
+            luaL::argerror(L, 1, "fs.cp, attempt to escape directory");
+            return 0;
+        }
+
+        std::filesystem::path to_weak_path = std::filesystem::path(root_path) / std::filesystem::path(to_path);
+        std::filesystem::path to_full_path = std::filesystem::weakly_canonical(to_weak_path);
+
+        if (to_full_path.string().rfind(root_path) != 0) {
+            luaL::argerror(L, 2, "fs.cp, attempt to escape directory");
+            return 0;
+        }
+
+        std::error_code ec;
+        std::filesystem::copy(from_full_path, to_full_path,
+            std::filesystem::copy_options::recursive |
+            std::filesystem::copy_options::overwrite_existing,
+            ec);
+        lua::pushboolean(L, !ec);
+        return 1;
+    }
+
+    std::string read(const std::string& file_path) {
         if (!std::filesystem::exists(file_path))
             return "";
         std::ifstream stream(file_path, std::ios_base::binary);
@@ -318,7 +598,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
                 std::unique_lock<std::mutex> guard(async_lock);
                 queue_read.push_back(std::tuple(id, reference, true, file_content));
                 guard.unlock();
-            }).detach();
+                }).detach();
             return 0;
         }
 
@@ -329,7 +609,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return 1;
     }
 
-    bool write(std::string file_path, std::string file_content) {
+    bool write(const std::string& file_path, std::string file_content) {
         std::string extension = path_extension(file_path.c_str());
 
         std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
@@ -407,7 +687,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
                 std::unique_lock<std::mutex> guard(async_lock);
                 queue_write.push_back(std::tuple(id, reference, true));
                 guard.unlock();
-            }).detach();
+                }).detach();
         }
         else {
             std::ofstream outfile(full_path, std::ios::out | std::ios::binary);
@@ -424,147 +704,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return 0;
     }
 
-    bool isfile(std::string file_path) {
-        return std::filesystem::is_regular_file(file_path);
-    }
-
-    int isfile(lua_State* L) {
-        std::string file_path = luaL::checkcstring(L, 1);
-        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
-        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
-
-        if (full_path.string().rfind(root_path) != 0) {
-            luaL::error(L, "fs.isfile, attempt to escape directory");
-            return 0;
-        }
-
-        lua::pushboolean(L, std::filesystem::is_regular_file(full_path));
-
-        return 1;
-    }
-
-    bool isfolder(std::string folder_path) {
-        return std::filesystem::is_directory(folder_path);
-    }
-
-    int isfolder(lua_State* L) {
-        std::string file_path = luaL::checkcstring(L, 1);
-        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
-        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
-
-        if (full_path.string().rfind(root_path) != 0) {
-            luaL::error(L, "fs.isfolder, attempt to escape directory");
-            return 0;
-        }
-
-        lua::pushboolean(L, std::filesystem::is_directory(full_path));
-
-        return 1;
-    }
-
-    int listfiles(lua_State* L) {
-        std::string folder_path = luaL::checkcstring(L, 1);
-        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(folder_path);
-        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
-
-        if (full_path.string().rfind(root_path) != 0) {
-            luaL::error(L, "fs.listfiles, attempt to escape directory");
-            return 0;
-        }
-
-        if (!std::filesystem::exists(full_path)) {
-            return 0;
-        }
-
-        lua::newtable(L);
-
-        size_t index = 1;
-
-        for (const auto& entry : std::filesystem::directory_iterator(full_path)) {
-            std::string filename = entry.path().filename().string();
-            lua::pushnumber(L, index++);
-            lua::pushcstring(L, filename);
-            lua::settable(L, -3);
-        }
-
-        return 1;
-    }
-
-    bool makefolder(std::string folder_path) {
-        return std::filesystem::create_directories(folder_path);
-    }
-
-    int makefolder(lua_State* L) {
-        std::string folder_path = luaL::checkcstring(L, 1);
-        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(folder_path);
-        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
-
-        if (full_path.string().rfind(root_path) != 0) {
-            luaL::error(L, "fs.makefolder, attempt to escape directory");
-            return 0;
-        }
-
-        lua::pushboolean(L, std::filesystem::create_directories(full_path));
-
-        return 0;
-    }
-
-    bool delfolder(std::string folder_path) {
-        try {
-            return std::filesystem::remove_all(folder_path);
-        }
-        catch (std::exception& e) {
-            return false;
-        }
-    }
-
-    int delfolder(lua_State* L) {
-        std::string folder_path = luaL::checkcstring(L, 1);
-        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(folder_path);
-        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
-
-        if (full_path.string().rfind(root_path) != 0) {
-            luaL::error(L, "fs.delfolder, attempt to escape directory");
-            return 0;
-        }
-
-        try {
-            if (!std::filesystem::remove_all(full_path)) {
-                luaL::error(L, "fs.delfolder, folder does not exist or could not be deleted");
-                return 0;
-            }
-        }
-        catch (std::exception& e) {
-            luaL::error(L, "fs.delfolder, folder appears to be in-use");
-            return 0;
-        }
-
-        return 0;
-    }
-
-    bool delfile(std::string file_path) {
-        return std::filesystem::remove(file_path);
-    }
-
-    int delfile(lua_State* L) {
-        std::string file_path = luaL::checkcstring(L, 1);
-        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
-        std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
-
-        if (full_path.string().rfind(root_path) != 0) {
-            luaL::error(L, "fs.delfile, attempt to escape directory");
-            return 0;
-        }
-
-        if (!std::filesystem::remove(full_path)) {
-            luaL::error(L, "fs.delfile, file does not exist or could not be deleted");
-            return 0;
-        }
-
-        return 0;
-    }
-
-    bool append(std::string file_path, std::string file_content) {
+    bool append(const std::string& file_path, std::string file_content) {
         std::string extension = path_extension(file_path.c_str());
 
         std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
@@ -915,6 +1055,9 @@ namespace INTERSTELLAR_NAMESPACE::FS {
     void push(lua_State* L, UMODULE handle) {
         lua::newtable(L);
 
+        lua::pushcstring(L, std::string(1, (char)std::filesystem::path::preferred_separator));
+        lua::setfield(L, -2, "separator");
+
         lua::pushcfunction(L, read);
         lua::setfield(L, -2, "read");
 
@@ -927,20 +1070,32 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         lua::pushcfunction(L, isfolder);
         lua::setfield(L, -2, "isfolder");
 
-        lua::pushcfunction(L, listfiles);
-        lua::setfield(L, -2, "listfiles");
+        lua::pushcfunction(L, readable);
+        lua::setfield(L, -2, "readable");
 
-        lua::pushcfunction(L, makefolder);
-        lua::setfield(L, -2, "makefolder");
+        lua::pushcfunction(L, writeable);
+        lua::setfield(L, -2, "writeable");
 
-        lua::pushcfunction(L, delfolder);
-        lua::setfield(L, -2, "delfolder");
+        lua::pushcfunction(L, scan);
+        lua::setfield(L, -2, "scan");
 
-        lua::pushcfunction(L, delfile);
-        lua::setfield(L, -2, "delfile");
+        lua::pushcfunction(L, mkdir);
+        lua::setfield(L, -2, "mkdir");
 
-        lua::pushcfunction(L, append);
-        lua::setfield(L, -2, "append");
+        lua::pushcfunction(L, rmdir);
+        lua::setfield(L, -2, "rmdir");
+
+        lua::pushcfunction(L, rmfile);
+        lua::setfield(L, -2, "rmfile");
+
+        lua::pushcfunction(L, rm);
+        lua::setfield(L, -2, "rm");
+
+        lua::pushcfunction(L, mv);
+        lua::setfield(L, -2, "mv");
+
+        lua::pushcfunction(L, cp);
+        lua::setfield(L, -2, "cp");
 
         lua::pushcfunction(L, sanitize);
         lua::setfield(L, -2, "sanitize");
@@ -965,7 +1120,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
     }
 
     void api(std::string root) {
-        root_path = (root.size() > 0 ? root : get_root());
+        root_path = (root.size() > 0 ? root : where());
         Reflection::on_threaded("fs", runtime_threaded);
         Reflection::on_runtime("fs", runtime);
         Reflection::add("fs", push);
