@@ -1452,13 +1452,18 @@ namespace INTERSTELLAR_NAMESPACE {
             API::lua_State* self;
         };
 
+        inline bool operator==(const state_union& lhs, const state_union& rhs) {
+            return lhs.pointer == rhs.pointer;
+        }
+
         struct state_tracking {
             std::string name;
             std::shared_ptr<std::mutex> mutex;
             state_union state;
+            std::vector<state_union> children;
+            state_union parent;
             bool threaded;
             bool internal;
-            bool root;
         };
 
         typedef void (*lua_Closure) (API::lua_State* L);
@@ -1488,6 +1493,14 @@ namespace INTERSTELLAR_NAMESPACE {
         extern bool is_threaded(void* L);
         extern bool is_threaded(uintptr_t L);
         extern bool is_threaded(std::string name);
+        extern std::vector<API::lua_State*> get_children(API::lua_State* L);
+        extern std::vector<API::lua_State*> get_children(void* L);
+        extern std::vector<API::lua_State*> get_children(uintptr_t L);
+        extern std::vector<API::lua_State*> get_children(std::string name);
+        extern API::lua_State* get_parent(API::lua_State* L);
+        extern API::lua_State* get_parent(void* L);
+        extern API::lua_State* get_parent(uintptr_t L);
+        extern API::lua_State* get_parent(std::string name);
         extern bool should_lock(API::lua_State* target, API::lua_State* source);
         extern std::string get_name(API::lua_State* L);
         extern std::vector<std::pair<std::string, API::lua_State*>> get_states();
@@ -1497,8 +1510,8 @@ namespace INTERSTELLAR_NAMESPACE {
         extern std::unique_lock<std::mutex> lock(std::string name);
         extern void cross_lock(API::lua_State* target, API::lua_State* source);
         extern void cross_unlock(API::lua_State* target, API::lua_State* source);
-        extern void listen(API::lua_State* L, std::string name, bool internal = false);
-        extern void listen(API::lua_State* L, std::string name, std::shared_ptr<std::mutex> guard, bool internal = false);
+        extern void listen(API::lua_State* L, std::string name, bool internal = false, API::lua_State* parent = nullptr);
+        extern void listen(API::lua_State* L, std::string name, std::shared_ptr<std::mutex> guard, bool internal = false, API::lua_State* parent = nullptr);
         extern void destroy(API::lua_State* L);
         extern void destroy(uintptr_t L);
         extern void destroy(void* L);
@@ -1575,7 +1588,7 @@ namespace INTERSTELLAR_NAMESPACE {
         extern std::string execute(API::lua_State* L, std::string source, std::string name);
 
         // Opens a new lua_State
-        extern API::lua_State* open(std::string name, bool internal = false, bool threaded = false);
+        extern API::lua_State* open(std::string name, bool internal = false, bool threaded = false, API::lua_State* parent = nullptr);
 
         // Closes a lua_State
         extern void close(API::lua_State* L);

@@ -30,6 +30,7 @@ namespace INTERSTELLAR_NAMESPACE {
         #define grab n2p
         #define cast reinterpret_cast
 
+
         // luaL functions
         namespace luaL
         {
@@ -1021,7 +1022,7 @@ namespace INTERSTELLAR_NAMESPACE {
             std::lock_guard<std::mutex> guard(*access_mtx);
             auto& mapping = get_mapping();
             for (auto& entry : mapping) {
-                if (entry.second->root) {
+                if (entry.second->parent.self != nullptr) {
                     return entry.second->state.self;
                 }
             }
@@ -1032,7 +1033,7 @@ namespace INTERSTELLAR_NAMESPACE {
         {
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
-                return tracker->root;
+                return tracker->parent.self == nullptr;
             }
             return false;
         }
@@ -1041,7 +1042,7 @@ namespace INTERSTELLAR_NAMESPACE {
         {
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
-                return tracker->root;
+                return tracker->parent.self == nullptr;
             }
             return false;
         }
@@ -1050,7 +1051,7 @@ namespace INTERSTELLAR_NAMESPACE {
         {
             state_tracking* tracker = get_tracker(L);
             if (tracker != nullptr) {
-                return tracker->root;
+                return tracker->parent.self == nullptr;
             }
             return false;
         }
@@ -1059,7 +1060,7 @@ namespace INTERSTELLAR_NAMESPACE {
         {
             state_tracking* tracker = get_tracker(name);
             if (tracker != nullptr) {
-                return tracker->root;
+                return tracker->parent.self == nullptr;
             }
             return false;
         }
@@ -1134,6 +1135,98 @@ namespace INTERSTELLAR_NAMESPACE {
                 return tracker->threaded;
             }
             return false;
+        }
+
+        std::vector<lua_State*> get_children(lua_State* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr && tracker->children.size() > 0) {
+                std::vector<lua_State*> ret;
+                ret.reserve(tracker->children.size());
+                for (const auto& entry : tracker->children) {
+                    ret.push_back(entry.self);
+                }
+                return ret;
+            }
+            return std::vector<lua_State*>();
+        }
+
+        std::vector<lua_State*> get_children(void* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr && tracker->children.size() > 0) {
+                std::vector<lua_State*> ret;
+                ret.reserve(tracker->children.size());
+                for (const auto& entry : tracker->children) {
+                    ret.push_back(entry.self);
+                }
+                return ret;
+            }
+            return std::vector<lua_State*>();
+        }
+
+        std::vector<lua_State*> get_children(uintptr_t L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr && tracker->children.size() > 0) {
+                std::vector<lua_State*> ret;
+                ret.reserve(tracker->children.size());
+                for (const auto& entry : tracker->children) {
+                    ret.push_back(entry.self);
+                }
+                return ret;
+            }
+            return std::vector<lua_State*>();
+        }
+
+        std::vector<lua_State*> get_children(std::string name)
+        {
+            state_tracking* tracker = get_tracker(name);
+            if (tracker != nullptr && tracker->children.size() > 0) {
+                std::vector<lua_State*> ret;
+                ret.reserve(tracker->children.size());
+                for (const auto& entry : tracker->children) {
+                    ret.push_back(entry.self);
+                }
+                return ret;
+            }
+            return std::vector<lua_State*>();
+        }
+
+        lua_State* get_parent(lua_State* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr && tracker->parent.self != nullptr) {
+                return tracker->parent.self;
+            }
+            return nullptr;
+        }
+
+        lua_State* get_parent(void* L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr && tracker->parent.self != nullptr) {
+                return tracker->parent.self;
+            }
+            return nullptr;
+        }
+
+        lua_State* get_parent(uintptr_t L)
+        {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker != nullptr && tracker->parent.self != nullptr) {
+                return tracker->parent.self;
+            }
+            return nullptr;
+        }
+
+        lua_State* get_parent(std::string name)
+        {
+            state_tracking* tracker = get_tracker(name);
+            if (tracker != nullptr && tracker->parent.self != nullptr) {
+                return tracker->parent.self;
+            }
+            return nullptr;
         }
 
         bool should_lock(lua_State* target, lua_State* source)
@@ -1256,7 +1349,7 @@ namespace INTERSTELLAR_NAMESPACE {
             return std::unique_lock<std::mutex>(*tracker->mutex);
         }
 
-        void listen(lua_State* L, std::string name, bool internal)
+        void listen(lua_State* L, std::string name, bool internal, lua_State* parent)
         {
             uintptr_t id = (uintptr_t)L;
 
@@ -1266,7 +1359,16 @@ namespace INTERSTELLAR_NAMESPACE {
                 tracker->internal = internal;
                 tracker->name = name;
                 tracker->state.self = L;
+                tracker->parent.self = parent;
+                tracker->children = std::vector<state_union>();
                 tracker->mutex = global_mtx;
+
+                if (parent != nullptr)
+                {
+                    state_tracking* parent_tracker = Tracker::get_tracker(parent);
+                    state_union u; u.self = L;
+                    parent_tracker->children.push_back(u);
+                }
 
                 auto& mapping = get_mapping();
                 auto& imapping = get_imapping();
@@ -1275,10 +1377,6 @@ namespace INTERSTELLAR_NAMESPACE {
                 mapping.emplace(id, tracker);
                 imapping.emplace(name, tracker);
                 if (guard_access.owns_lock()) guard_access.unlock(); guard_access.release();
-
-                if (mapping.size() == 1) {
-                    tracker->root = true;
-                }
 
                 auto& dispatch = get_opening();
                 for (auto& [key, callback] : dispatch) {
@@ -1309,7 +1407,7 @@ namespace INTERSTELLAR_NAMESPACE {
             }
         }
 
-        void listen(lua_State* L, std::string name, std::shared_ptr<std::mutex> mtx, bool internal)
+        void listen(lua_State* L, std::string name, std::shared_ptr<std::mutex> mtx, bool internal, lua_State* parent)
         {
             uintptr_t id = (uintptr_t)L;
 
@@ -1319,6 +1417,16 @@ namespace INTERSTELLAR_NAMESPACE {
                 tracker->internal = internal;
                 tracker->name = name;
                 tracker->state.self = L;
+                tracker->parent.self = parent;
+                tracker->children = std::vector<state_union>();
+
+                if (parent != nullptr)
+                {
+                    state_tracking* parent_tracker = Tracker::get_tracker(parent);
+                    state_union u; u.self = L;
+                    parent_tracker->children.push_back(u);
+                }
+
                 tracker->mutex = mtx;
 
                 auto& mapping = get_mapping();
@@ -1328,10 +1436,6 @@ namespace INTERSTELLAR_NAMESPACE {
                 mapping.emplace(id, tracker);
                 imapping.emplace(name, tracker);
                 if (guard_access.owns_lock()) guard_access.unlock(); guard_access.release();
-
-                if (mapping.size() == 1) {
-                    tracker->root = true;
-                }
 
                 auto& dispatch = get_opening();
                 for (auto& [key, callback] : dispatch) {
@@ -1368,6 +1472,14 @@ namespace INTERSTELLAR_NAMESPACE {
 
             std::string name = tracker->name;
             lua_State* L = tracker->state.self;
+
+            if (tracker->parent.self != nullptr) {
+                state_tracking* parent_tracker = get_tracker(tracker->parent.self);
+                if (parent_tracker != nullptr) {
+                    std::remove(parent_tracker->children.begin(), parent_tracker->children.end(), tracker->state);
+                }
+            }
+
             for (auto& state : Tracker::get_states()) {
                 lua_State* S = state.second;
 
@@ -1420,16 +1532,28 @@ namespace INTERSTELLAR_NAMESPACE {
         }
 
         void pre_remove(lua_State* L) {
+            state_tracking* tracker = get_tracker(L);
+
+            for (auto& state : tracker->children)
+            {
+                if (Tracker::is_internal(state.self)) continue;
+                Reflection::close(state.self);
+            }
+
+            auto lock = Tracker::lock(L);
             destroy(L);
 
             auto& dispatch = get_closing();
             for (auto& [key, callback] : dispatch) {
                 callback(L);
             }
+            if (lock.owns_lock()) lock.unlock(); lock.release();
         }
 
         void post_remove(lua_State* L) {
+            auto lock = Tracker::lock(L);
             Class::cleanup(L);
+            if (lock.owns_lock()) lock.unlock(); lock.release();
         }
 
         void on_open(std::string name, lua_Closure callback)
@@ -2378,7 +2502,7 @@ namespace INTERSTELLAR_NAMESPACE {
             Task::runtime();
         }
 
-        lua_State* open(std::string name, bool internal, bool threaded)
+        lua_State* open(std::string name, bool internal, bool threaded, lua_State* parent)
         {
             lua_State* exists = Tracker::is_state(name);
             if (exists != nullptr) {
@@ -2394,7 +2518,7 @@ namespace INTERSTELLAR_NAMESPACE {
             if (threaded) {
                 static Signal::Handle* tasker = Task::signal();
 
-                Tracker::listen(L, name, std::make_shared<std::mutex>(), internal);
+                Tracker::listen(L, name, std::make_shared<std::mutex>(), internal, parent);
 
                 std::thread([L]() {
                     while (Tracker::is_state(L) != nullptr) {
@@ -2403,7 +2527,7 @@ namespace INTERSTELLAR_NAMESPACE {
                 }).detach();
             }
             else {
-                Tracker::listen(L, name, internal);
+                Tracker::listen(L, name, internal, parent);
             }
 
             return L;
@@ -2412,11 +2536,11 @@ namespace INTERSTELLAR_NAMESPACE {
         void close(lua_State* L)
         {
             if (Tracker::is_threaded(L)) {
-                auto lock = Tracker::lock(L);
                 Tracker::pre_remove(L);
+                auto lock = Tracker::lock(L);
                 lua::close(L);
-                Tracker::post_remove(L);
                 if (lock.owns_lock()) lock.unlock(); lock.release();
+                Tracker::post_remove(L);
             } else {
                 Tracker::pre_remove(L);
                 lua::close(L);
@@ -2500,6 +2624,8 @@ namespace INTERSTELLAR_NAMESPACE {
 
 namespace INTERSTELLAR_NAMESPACE::Reflection {
     using namespace API;
+
+    void push_state(lua_State* L, lua_State* state);
 
     int lua_state__tostring(lua_State* L) {
         lua_State* state = Tracker::is_state(Class::check(L, 1, "lua.state"));
@@ -2585,7 +2711,93 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
         return 0;
     }
 
-    void push_state(lua_State* L, lua_State* state);
+    int lua_state_name(lua_State* L)
+    {
+        lua_State* state = Tracker::is_state(Class::check(L, 1, "lua.state"));
+        if (state == nullptr) {
+            luaL::error(L, "invalid lua instance");
+            return 0;
+        }
+        std::string name = Tracker::get_name(state);
+        if (name.size() < 1) {
+            name = "unknown";
+        }
+        lua::pushcstring(L, name);
+        return 1;
+    }
+
+    int lua_state_threaded(lua_State* L)
+    {
+        lua_State* state = Tracker::is_state(Class::check(L, 1, "lua.state"));
+        if (state == nullptr) {
+            luaL::error(L, "invalid lua instance");
+            return 0;
+        }
+        lua::pushboolean(L, Tracker::is_threaded(state));
+        return 1;
+    }
+
+    int lua_state_root(lua_State* L)
+    {
+        lua_State* state = Tracker::is_state(Class::check(L, 1, "lua.state"));
+        if (state == nullptr) {
+            luaL::error(L, "invalid lua instance");
+            return 0;
+        }
+        lua::pushboolean(L, Tracker::is_root(state));
+        return 1;
+    }
+
+    int lua_state_internal(lua_State* L)
+    {
+        lua_State* state = Tracker::is_state(Class::check(L, 1, "lua.state"));
+        if (state == nullptr) {
+            luaL::error(L, "invalid lua instance");
+            return 0;
+        }
+        lua::pushboolean(L, Tracker::is_internal(state));
+        return 1;
+    }
+
+    int lua_state_parent(lua_State* L)
+    {
+        lua_State* state = Tracker::is_state(Class::check(L, 1, "lua.state"));
+        if (state == nullptr) {
+            luaL::error(L, "invalid lua instance");
+            return 0;
+        }
+
+        lua_State* parent = Tracker::get_parent(state);
+        if (parent == nullptr) {
+            return 0;
+        }
+
+        push_state(L, parent);
+
+        return 1;
+    }
+
+    int lua_state_children(lua_State* L)
+    {
+        lua_State* state = Tracker::is_state(Class::check(L, 1, "lua.state"));
+        if (state == nullptr) {
+            luaL::error(L, "invalid lua instance");
+            return 0;
+        }
+
+        std::vector<lua_State*> children = Tracker::get_children(state);
+
+        lua::newtable(L);
+
+        size_t i = 0;
+        for (auto& entry : children) {
+            lua::pushnumber(L, ++i);
+            push_state(L, entry);
+            lua::settable(L, -3);
+        }
+
+        return 1;
+    }
 
     namespace CAPI {
         std::vector<lua_State*> stack_target;
@@ -3419,6 +3631,24 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
             lua::pushcfunction(L, lua_state_compile);
             lua::setfield(L, -2, "compile");
 
+            lua::pushcfunction(L, lua_state_name);
+            lua::setfield(L, -2, "name");
+
+            lua::pushcfunction(L, lua_state_threaded);
+            lua::setfield(L, -2, "threaded");
+
+            lua::pushcfunction(L, lua_state_internal);
+            lua::setfield(L, -2, "internal");
+
+            lua::pushcfunction(L, lua_state_root);
+            lua::setfield(L, -2, "root");
+
+            lua::pushcfunction(L, lua_state_parent);
+            lua::setfield(L, -2, "parent");
+
+            lua::pushcfunction(L, lua_state_children);
+            lua::setfield(L, -2, "children");
+
             lua::pushcfunction(L, CAPI::lua_state_stack);
             lua::setfield(L, -2, "stack");
 
@@ -3529,21 +3759,6 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
         return 1;
     }
 
-    int name_l(lua_State* L)
-    {
-        lua_State* target = Tracker::is_state(Class::check(L, 1, "lua.state"));
-        if (target == nullptr) {
-            luaL::error(L, "invalid lua instance");
-            return 0;
-        }
-        std::string name = Tracker::get_name(target);
-        if (name.size() < 1) {
-            name = "unknown";
-        }
-        lua::pushcstring(L, name);
-        return 1;
-    }
-
     int printl(lua_State* L)
     {
         int nargs = lua::gettop(L);
@@ -3614,10 +3829,15 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
             return 1;
         }
 
+        if (Tracker::get_parent(L) != nullptr) {
+            luaL::error(L, "lua_State sub-creation is disabled (for now)");
+            return 0;
+        }
+
         lua_State* state;
 
         if (lua::isboolean(L, 2) && lua::toboolean(L, 2)) {
-            state = Reflection::open(name, false, true);
+            state = Reflection::open(name, false, true, L);
 
             auto lock = Tracker::lock(state);
 
@@ -3629,7 +3849,7 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
             if (lock.owns_lock()) lock.unlock(); lock.release();
         }
         else {
-            state = Reflection::open(name, false, false);
+            state = Reflection::open(name, false, false, L);
             lua::pushvalue(state, indexer::global);
             lua::getfield(state, -1, "tostring");
             lua::pushcclosure(state, printl, 1);
@@ -3651,6 +3871,11 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
 
         if (Tracker::is_internal(target)) {
             luaL::error(L, "cannot close internal lua_State");
+            return 0;
+        }
+
+        if (Tracker::get_parent(target) != L) {
+            luaL::error(L, "cannot close lua_State without parented ownership");
             return 0;
         }
 
@@ -3680,9 +3905,6 @@ namespace INTERSTELLAR_NAMESPACE::Reflection {
 
         lua::pushcfunction(L, current_l);
         lua::setfield(L, -2, "current");
-
-        lua::pushcfunction(L, name_l);
-        lua::setfield(L, -2, "name");
 
         lua::pushcfunction(L, openl);
         lua::setfield(L, -2, "open");
