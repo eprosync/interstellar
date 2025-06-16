@@ -2489,6 +2489,117 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
         lock_http.unlock();
 
+        std::unique_lock<std::mutex> lock_stream(stream_response_lock);
+
+        if (stream_responses.size() > 0)
+        {
+            for (auto it = stream_responses.begin(); it != stream_responses.end(); ) {
+                auto& result = *it;
+                uintptr_t id = std::get<0>(result);
+                lua_State* L = Tracker::is_state(id);
+
+                if (L != T) {
+                    ++it;
+                    continue;
+                }
+
+                int reference = std::get<1>(result);
+                cpr::Response response = std::get<2>(result);
+
+                lua::pushref(L, reference);
+
+                lua::newtable(L);
+
+                lua::pushnumber(L, response.status_code);
+                lua::setfield(L, -2, "status");
+
+                lua::pushcstring(L, response.text);
+                lua::setfield(L, -2, "body");
+
+                lua::pushcstring(L, response.reason);
+                lua::setfield(L, -2, "reason");
+
+                lua::pushcstring(L, response.url.str());
+                lua::setfield(L, -2, "url");
+
+                lua::newtable(L);
+                for (const auto& [key, value] : response.header)
+                {
+                    lua::pushcstring(L, key);
+                    lua::pushcstring(L, value);
+                    lua::settable(L, -3);
+                }
+                lua::setfield(L, -2, "headers");
+
+                if (lua::tcall(L, 1, 1)) {
+                    std::string err = lua::tocstring(L, -1);
+                    auto& on_error = get_on_error();
+                    for (auto const& handle : on_error) handle.second(L, "stream - " + response.url.str(), err);
+
+                    std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
+                    if (!stream_cancel.empty()) {
+                        bool should = true;
+
+                        for (auto& cancel : stream_cancel) {
+                            if (cancel.first == id && cancel.second == reference) {
+                                should = false;
+                                break;
+                            }
+                        }
+
+                        if (should) {
+                            stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
+                        }
+                    }
+                }
+                else if (lua::isboolean(L, -1) && lua::toboolean(L, -1) == false) {
+                    std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
+                    if (!stream_cancel.empty()) {
+                        bool should = true;
+
+                        for (auto& cancel : stream_cancel) {
+                            if (cancel.first == id && cancel.second == reference) {
+                                should = false;
+                                break;
+                            }
+                        }
+
+                        if (should) {
+                            stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
+                        }
+                    }
+                }
+
+                it = stream_responses.erase(it);
+                lua::pop(L);
+
+                if (response.status_code != 100) {
+                    luaL::rmref(L, reference);
+
+                    std::lock_guard<std::mutex> progress_cancel_lock_guard(progress_cancel_lock);
+                    if (!progress_cancel.empty()) {
+                        for (auto& cancel : progress_cancel) {
+                            if (cancel.first == id && cancel.second == reference) {
+                                progress_cancel.erase(std::remove(progress_cancel.begin(), progress_cancel.end(), cancel), progress_cancel.end());
+                            }
+                        }
+                    }
+
+                    std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
+                    if (!stream_cancel.empty()) {
+                        for (auto& cancel : stream_cancel) {
+                            if (cancel.first == id && cancel.second == reference) {
+                                stream_cancel.erase(std::remove(stream_cancel.begin(), stream_cancel.end(), cancel), stream_cancel.end());
+                            }
+                        }
+                    }
+                }
+            }
+            stream_responses.clear();
+        }
+
+        lock_stream.unlock();
+
         if (sockets.size() > 0) {
             for (auto it = sockets.begin(); it != sockets.end(); ) {
                 auto& socket_entry = *it;
@@ -2675,6 +2786,117 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         }
 
         lock_http.unlock();
+
+        std::unique_lock<std::mutex> lock_stream(stream_response_lock);
+
+        if (stream_responses.size() > 0)
+        {
+            for (auto it = stream_responses.begin(); it != stream_responses.end(); ) {
+                auto& result = *it;
+                uintptr_t id = std::get<0>(result);
+                lua_State* L = Tracker::is_state(id);
+
+                if (L == nullptr || Tracker::is_threaded(L)) {
+                    ++it;
+                    continue;
+                }
+
+                int reference = std::get<1>(result);
+                cpr::Response response = std::get<2>(result);
+
+                lua::pushref(L, reference);
+
+                lua::newtable(L);
+
+                lua::pushnumber(L, response.status_code);
+                lua::setfield(L, -2, "status");
+
+                lua::pushcstring(L, response.text);
+                lua::setfield(L, -2, "body");
+
+                lua::pushcstring(L, response.reason);
+                lua::setfield(L, -2, "reason");
+
+                lua::pushcstring(L, response.url.str());
+                lua::setfield(L, -2, "url");
+
+                lua::newtable(L);
+                for (const auto& [key, value] : response.header)
+                {
+                    lua::pushcstring(L, key);
+                    lua::pushcstring(L, value);
+                    lua::settable(L, -3);
+                }
+                lua::setfield(L, -2, "headers");
+
+                if (lua::tcall(L, 1, 1)) {
+                    std::string err = lua::tocstring(L, -1);
+                    auto& on_error = get_on_error();
+                    for (auto const& handle : on_error) handle.second(L, "stream - " + response.url.str(), err);
+
+                    std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
+                    if (!stream_cancel.empty()) {
+                        bool should = true;
+
+                        for (auto& cancel : stream_cancel) {
+                            if (cancel.first == id && cancel.second == reference) {
+                                should = false;
+                                break;
+                            }
+                        }
+
+                        if (should) {
+                            stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
+                        }
+                    }
+                }
+                else if (lua::isboolean(L, -1) && lua::toboolean(L, -1) == false) {
+                    std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
+                    if (!stream_cancel.empty()) {
+                        bool should = true;
+
+                        for (auto& cancel : stream_cancel) {
+                            if (cancel.first == id && cancel.second == reference) {
+                                should = false;
+                                break;
+                            }
+                        }
+
+                        if (should) {
+                            stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
+                        }
+                    }
+                }
+
+                it = stream_responses.erase(it);
+                lua::pop(L);
+
+                if (response.status_code != 100) {
+                    luaL::rmref(L, reference);
+
+                    std::lock_guard<std::mutex> progress_cancel_lock_guard(progress_cancel_lock);
+                    if (!progress_cancel.empty()) {
+                        for (auto& cancel : progress_cancel) {
+                            if (cancel.first == id && cancel.second == reference) {
+                                progress_cancel.erase(std::remove(progress_cancel.begin(), progress_cancel.end(), cancel), progress_cancel.end());
+                            }
+                        }
+                    }
+
+                    std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
+                    if (!stream_cancel.empty()) {
+                        for (auto& cancel : stream_cancel) {
+                            if (cancel.first == id && cancel.second == reference) {
+                                stream_cancel.erase(std::remove(stream_cancel.begin(), stream_cancel.end(), cancel), stream_cancel.end());
+                            }
+                        }
+                    }
+                }
+            }
+            stream_responses.clear();
+        }
+
+        lock_stream.unlock();
 
         if (sockets.size() > 0) {
             for (auto it = sockets.begin(); it != sockets.end(); ) {
