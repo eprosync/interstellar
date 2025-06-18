@@ -23,6 +23,76 @@
 #include <iomanip>
 
 namespace INTERSTELLAR_NAMESPACE {
+    namespace Engine {
+        /* Get C data pointer. */
+        void* cdata_getptr(void* p, CTSize sz)
+        {
+            if (LJ_64 && sz == 4) {  /* Support 32 bit pointers on 64 bit targets. */
+                return ((void*)(uintptr_t) * (uint32_t*)p);
+            }
+            else if (sz == CTSIZE_PTR) {
+                return *(void**)p;
+            }
+        }
+
+        /* Set C data pointer. */
+        void cdata_setptr(void* p, CTSize sz, const void* v)
+        {
+            if (LJ_64 && sz == 4) {  /* Support 32 bit pointers on 64 bit targets. */
+                *(uint32_t*)p = (uint32_t)(uintptr_t)v;
+            }
+            else if (sz == CTSIZE_PTR) {
+                *(void**)p = (void*)v;
+            }
+        }
+
+        /* Get C type state. */
+        CTState* ctype_cts(lua_State* L)
+        {
+            CTState* cts = ctype_ctsG(mref(L->glref, global_State));
+            cts->L = L;  /* Save L for errors and allocations. */
+            return cts;
+        }
+
+        /* Check C type ID for validity when assertions are enabled. */
+        CTypeID ctype_check(CTState *cts, CTypeID id)
+        {
+            if (id > 0 && id < cts->top) {
+                return id;
+            }
+        }
+
+        /* Get C type for C type ID. */
+        CType *ctype_get(CTState *cts, CTypeID id)
+        {
+            return &cts->tab[ctype_check(cts, id)];
+        }
+
+        /* Get child C type. */
+        CType *ctype_child(CTState *cts, CType *ct)
+        {
+            if (!(ctype_isvoid(ct->info) || ctype_isstruct(ct->info) ||
+                ctype_isbitfield(ct->info))) {
+                return ctype_get(cts, ctype_cid(ct->info));
+            }
+        }
+
+        /* Get raw type for a C type ID. */
+        CType *ctype_raw(CTState *cts, CTypeID id)
+        {
+            CType *ct = ctype_get(cts, id);
+            while (ctype_isattrib(ct->info)) ct = ctype_child(cts, ct);
+            return ct;
+        }
+
+        /* Get raw type of the child of a C type. */
+        CType *ctype_rawchild(CTState *cts, CType *ct)
+        {
+            do { ct = ctype_child(cts, ct); } while (ctype_isattrib(ct->info));
+            return ct;
+        }
+    }
+
     namespace API
     {
         // Giant garble of GetProcAddress assignments
@@ -730,11 +800,37 @@ namespace INTERSTELLAR_NAMESPACE {
                 return userdata->data;
             }
 
-            void* tocdata(lua_State* L, int index)
+            void* tocdataptr(lua_State* L, int index)
             {
                 using namespace Engine;
                 TValue* tv = toraw(L, index);
-                GCcdata* cdata = cdataV(tv);
+                GCcdata* cd = cdataV(tv);
+                CTState* cts = ctype_cts(L);
+                CType* ct = ctype_raw(cts, cd->ctypeid);
+                CTSize sz = CTSIZE_PTR;
+                if (ctype_isptr(ct->info)) {
+                    sz = ct->size;
+                    ct = ctype_rawchild(cts, ct);
+                }
+                return cdata_getptr(cdataptr(cd), sz);
+            }
+
+            void* tocdatafunc(lua_State* L, int index)
+            {
+                using namespace Engine;
+                TValue* tv = toraw(L, index);
+                GCcdata* cd = cdataV(tv);
+                CTState* cts = ctype_cts(L);
+                CType* ct = ctype_raw(cts, cd->ctypeid);
+                CTSize sz = CTSIZE_PTR;
+                if (ctype_isptr(ct->info)) {
+                    sz = ct->size;
+                    ct = ctype_rawchild(cts, ct);
+                }
+                if (ctype_isfunc(ct->info)) {
+                    return cdata_getptr(cdataptr(cd), sz);
+                }
+                return nullptr;
             }
 
             void pushcfunction(lua_State* L, lua_CFunction f)

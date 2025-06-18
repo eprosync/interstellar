@@ -523,7 +523,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         else if (lua::iscdata(L, 1))
         {
             using namespace Engine;
-
+            void* cdata = lua::tocdataptr(L, 1);
+            push_address(L, (void*)cdata);
             return 1;
         }
         uintptr_t addr = luaL::checknumber(L, 1);
@@ -1544,7 +1545,6 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     void api()
     {
         if (OS::ARGV::exists("memory")) {
-            Tracker::on_close("memory", cleanup);
             Reflection::add("memory", push);
             std::cout << "[WARNING] Interstellar has memory.* enabled, you have been warned." << std::endl;
         }

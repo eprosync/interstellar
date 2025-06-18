@@ -1017,6 +1017,231 @@ namespace INTERSTELLAR_NAMESPACE {
                 GCRef gcroot[GCROOT_MAX];  /* GC roots. */
             } global_State;
         #endif
+
+        /* Special sizes. */
+        #define CTSIZE_INVALID	0xffffffffu
+
+        typedef uint32_t CTInfo;	/* Type info. */
+        typedef uint32_t CTSize;	/* Type size. */
+        typedef uint32_t CTypeID;	/* Type ID. */
+        typedef uint16_t CTypeID1;	/* Minimum-sized type ID. */
+
+        /* C type table element. */
+        typedef struct CType {
+            CTInfo info;		/* Type info. */
+            CTSize size;		/* Type size or other info. */
+            CTypeID1 sib;		/* Sibling element. */
+            CTypeID1 next;	/* Next element in hash chain. */
+            GCRef name;		/* Element name (GCstr). */
+        } CType;
+
+        #define CTHASH_SIZE	128	/* Number of hash anchors. */
+        #define CTHASH_MASK	(CTHASH_SIZE-1)
+
+        /* Simplify target-specific configuration. Checked in lj_ccall.h. */
+        #define CCALL_MAX_GPR		8
+        #define CCALL_MAX_FPR		8
+
+        typedef LJ_ALIGN(8) union FPRCBArg { double d; float f[2]; } FPRCBArg;
+
+        /* C callback state. Defined here, to avoid dragging in lj_ccall.h. */
+
+        typedef LJ_ALIGN(8) struct CCallback {
+          FPRCBArg fpr[CCALL_MAX_FPR];	/* Arguments/results in FPRs. */
+          intptr_t gpr[CCALL_MAX_GPR];	/* Arguments/results in GPRs. */
+          intptr_t *stack;		/* Pointer to arguments on stack. */
+          void *mcode;			/* Machine code for callback func. pointers. */
+          CTypeID1 *cbid;		/* Callback type table. */
+          MSize sizeid;			/* Size of callback type table. */
+          MSize topid;			/* Highest unused callback type table slot. */
+          MSize slot;			/* Current callback slot. */
+        } CCallback;
+        
+        /* C type state. */
+        typedef struct CTState {
+            CType* tab;		/* C type table. */
+            CTypeID top;		/* Current top of C type table. */
+            MSize sizetab;	/* Size of C type table. */
+            lua_State* L;		/* Lua state (needed for errors and allocations). */
+            global_State* g;	/* Global state. */
+            GCtab* finalizer;	/* Map of cdata to finalizer. */
+            GCtab* miscmap;	/* Map of -CTypeID to metatable and cb slot to func. */
+            CCallback cb;		/* Temporary callback state. */
+            CTypeID1 hash[CTHASH_SIZE];  /* Hash anchors for C type table. */
+        } CTState;
+
+        /* C type numbers. Highest 4 bits of C type info. ORDER CT. */
+        enum {
+            /* Externally visible types. */
+            CT_NUM,		/* Integer or floating-point numbers. */
+            CT_STRUCT,		/* Struct or union. */
+            CT_PTR,		/* Pointer or reference. */
+            CT_ARRAY,		/* Array or complex type. */
+            CT_MAYCONVERT = CT_ARRAY,
+            CT_VOID,		/* Void type. */
+            CT_ENUM,		/* Enumeration. */
+            CT_HASSIZE = CT_ENUM,  /* Last type where ct->size holds the actual size. */
+            CT_FUNC,		/* Function. */
+            CT_TYPEDEF,		/* Typedef. */
+            CT_ATTRIB,		/* Miscellaneous attributes. */
+            /* Internal element types. */
+            CT_FIELD,		/* Struct/union field or function parameter. */
+            CT_BITFIELD,		/* Struct/union bitfield. */
+            CT_CONSTVAL,		/* Constant value. */
+            CT_EXTERN,		/* External reference. */
+            CT_KW			/* Keyword. */
+        };
+
+        /* C type info flags.     TFFArrrr  */
+        #define CTF_BOOL	0x08000000u	/* Boolean: NUM, BITFIELD. */
+        #define CTF_FP		0x04000000u	/* Floating-point: NUM. */
+        #define CTF_CONST	0x02000000u	/* Const qualifier. */
+        #define CTF_VOLATILE	0x01000000u	/* Volatile qualifier. */
+        #define CTF_UNSIGNED	0x00800000u	/* Unsigned: NUM, BITFIELD. */
+        #define CTF_LONG	0x00400000u	/* Long: NUM. */
+        #define CTF_VLA		0x00100000u	/* Variable-length: ARRAY, STRUCT. */
+        #define CTF_REF		0x00800000u	/* Reference: PTR. */
+        #define CTF_VECTOR	0x08000000u	/* Vector: ARRAY. */
+        #define CTF_COMPLEX	0x04000000u	/* Complex: ARRAY. */
+        #define CTF_UNION	0x00800000u	/* Union: STRUCT. */
+        #define CTF_VARARG	0x00800000u	/* Vararg: FUNC. */
+        #define CTF_SSEREGPARM	0x00400000u	/* SSE register parameters: FUNC. */
+
+        #define CTF_QUAL	(CTF_CONST|CTF_VOLATILE)
+        #define CTF_ALIGN	(CTMASK_ALIGN<<CTSHIFT_ALIGN)
+        #define CTF_UCHAR	((char)-1 > 0 ? CTF_UNSIGNED : 0)
+
+        /* C type info bitfields. */
+        #define CTMASK_CID	0x0000ffffu	/* Max. 65536 type IDs. */
+        #define CTMASK_NUM	0xf0000000u	/* Max. 16 type numbers. */
+        #define CTSHIFT_NUM	28
+        #define CTMASK_ALIGN	15		/* Max. alignment is 2^15. */
+        #define CTSHIFT_ALIGN	16
+        #define CTMASK_ATTRIB	255		/* Max. 256 attributes. */
+        #define CTSHIFT_ATTRIB	16
+        #define CTMASK_CCONV	3		/* Max. 4 calling conventions. */
+        #define CTSHIFT_CCONV	16
+        #define CTMASK_REGPARM	3		/* Max. 0-3 regparms. */
+        #define CTSHIFT_REGPARM	18
+        /* Bitfields only used in parser. */
+        #define CTMASK_VSIZEP	15		/* Max. vector size is 2^15. */
+        #define CTSHIFT_VSIZEP	4
+        #define CTMASK_MSIZEP	255		/* Max. type size (via mode) is 128. */
+        #define CTSHIFT_MSIZEP	8
+
+        /* Info bits for BITFIELD. Max. size of bitfield is 64 bits. */
+        #define CTBSZ_MAX	32		/* Max. size of bitfield is 32 bit. */
+        #define CTBSZ_FIELD	127		/* Temp. marker for regular field. */
+        #define CTMASK_BITPOS	127
+        #define CTMASK_BITBSZ	127
+        #define CTMASK_BITCSZ	127
+        #define CTSHIFT_BITPOS	0
+        #define CTSHIFT_BITBSZ	8
+        #define CTSHIFT_BITCSZ	16
+
+        #define CTINFO(ct, flags)	(((CTInfo)(ct) << CTSHIFT_NUM) + (flags))
+        #define CTALIGN(al)		((CTSize)(al) << CTSHIFT_ALIGN)
+        #define CTATTRIB(at)		((CTInfo)(at) << CTSHIFT_ATTRIB)
+
+        #define ctype_type(info)	((info) >> CTSHIFT_NUM)
+        #define ctype_cid(info)		((CTypeID)((info) & CTMASK_CID))
+        #define ctype_align(info)	(((info) >> CTSHIFT_ALIGN) & CTMASK_ALIGN)
+        #define ctype_attrib(info)	(((info) >> CTSHIFT_ATTRIB) & CTMASK_ATTRIB)
+        #define ctype_bitpos(info)	(((info) >> CTSHIFT_BITPOS) & CTMASK_BITPOS)
+        #define ctype_bitbsz(info)	(((info) >> CTSHIFT_BITBSZ) & CTMASK_BITBSZ)
+        #define ctype_bitcsz(info)	(((info) >> CTSHIFT_BITCSZ) & CTMASK_BITCSZ)
+        #define ctype_vsizeP(info)	(((info) >> CTSHIFT_VSIZEP) & CTMASK_VSIZEP)
+        #define ctype_msizeP(info)	(((info) >> CTSHIFT_MSIZEP) & CTMASK_MSIZEP)
+        #define ctype_cconv(info)	(((info) >> CTSHIFT_CCONV) & CTMASK_CCONV)
+
+        /* Simple type checks. */
+        #define ctype_isnum(info)	(ctype_type((info)) == CT_NUM)
+        #define ctype_isvoid(info)	(ctype_type((info)) == CT_VOID)
+        #define ctype_isptr(info)	(ctype_type((info)) == CT_PTR)
+        #define ctype_isarray(info)	(ctype_type((info)) == CT_ARRAY)
+        #define ctype_isstruct(info)	(ctype_type((info)) == CT_STRUCT)
+        #define ctype_isfunc(info)	(ctype_type((info)) == CT_FUNC)
+        #define ctype_isenum(info)	(ctype_type((info)) == CT_ENUM)
+        #define ctype_istypedef(info)	(ctype_type((info)) == CT_TYPEDEF)
+        #define ctype_isattrib(info)	(ctype_type((info)) == CT_ATTRIB)
+        #define ctype_isfield(info)	(ctype_type((info)) == CT_FIELD)
+        #define ctype_isbitfield(info)	(ctype_type((info)) == CT_BITFIELD)
+        #define ctype_isconstval(info)	(ctype_type((info)) == CT_CONSTVAL)
+        #define ctype_isextern(info)	(ctype_type((info)) == CT_EXTERN)
+        #define ctype_hassize(info)	(ctype_type((info)) <= CT_HASSIZE)
+
+        /* Combined type and flag checks. */
+        #define ctype_isinteger(info) \
+            (((info) & (CTMASK_NUM|CTF_BOOL|CTF_FP)) == CTINFO(CT_NUM, 0))
+        #define ctype_isinteger_or_bool(info) \
+            (((info) & (CTMASK_NUM|CTF_FP)) == CTINFO(CT_NUM, 0))
+        #define ctype_isbool(info) \
+            (((info) & (CTMASK_NUM|CTF_BOOL)) == CTINFO(CT_NUM, CTF_BOOL))
+        #define ctype_isfp(info) \
+            (((info) & (CTMASK_NUM|CTF_FP)) == CTINFO(CT_NUM, CTF_FP))
+
+        #define ctype_ispointer(info) \
+            ((ctype_type(info) >> 1) == (CT_PTR >> 1))  /* Pointer or array. */
+        #define ctype_isref(info) \
+            (((info) & (CTMASK_NUM|CTF_REF)) == CTINFO(CT_PTR, CTF_REF))
+
+        #define ctype_isrefarray(info) \
+            (((info) & (CTMASK_NUM|CTF_VECTOR|CTF_COMPLEX)) == CTINFO(CT_ARRAY, 0))
+        #define ctype_isvector(info) \
+            (((info) & (CTMASK_NUM|CTF_VECTOR)) == CTINFO(CT_ARRAY, CTF_VECTOR))
+        #define ctype_iscomplex(info) \
+            (((info) & (CTMASK_NUM|CTF_COMPLEX)) == CTINFO(CT_ARRAY, CTF_COMPLEX))
+
+        #define ctype_isvltype(info) \
+            (((info) & ((CTMASK_NUM|CTF_VLA) - (2u<<CTSHIFT_NUM))) == \
+            CTINFO(CT_STRUCT, CTF_VLA))  /* VL array or VL struct. */
+        #define ctype_isvlarray(info) \
+            (((info) & (CTMASK_NUM|CTF_VLA)) == CTINFO(CT_ARRAY, CTF_VLA))
+
+        #define ctype_isxattrib(info, at) \
+            (((info) & (CTMASK_NUM|CTATTRIB(CTMASK_ATTRIB))) == \
+            CTINFO(CT_ATTRIB, CTATTRIB(at)))
+
+        /* Target-dependent sizes and alignments. */
+        #if LJ_64
+        #define CTSIZE_PTR	8
+        #define CTALIGN_PTR	CTALIGN(3)
+        #else
+        #define CTSIZE_PTR	4
+        #define CTALIGN_PTR	CTALIGN(2)
+        #endif
+
+        #define CTINFO_REF(ref) \
+            CTINFO(CT_PTR, (CTF_CONST|CTF_REF|CTALIGN_PTR) + (ref))
+
+        /* Get C data pointer. */
+        extern void* cdata_getptr(void* p, CTSize sz);
+
+        /* Set C data pointer. */
+        extern void cdata_setptr(void* p, CTSize sz, const void* v);
+
+        #define ctype_ctsG(g)		(mref((g)->ctype_state, CTState))
+
+        /* Get C type state. */
+        extern CTState* ctype_cts(lua_State* L);
+
+        /* Check C type ID for validity when assertions are enabled. */
+        extern CTypeID ctype_check(CTState* cts, CTypeID id);
+
+        /* Get C type for C type ID. */
+        extern CType* ctype_get(CTState* cts, CTypeID id);
+
+        /* Get C type ID for a C type. */
+        #define ctype_typeid(cts, ct)	((CTypeID)((ct) - (cts)->tab))
+
+        /* Get child C type. */
+        extern CType* ctype_child(CTState* cts, CType* ct);
+
+        /* Get raw type for a C type ID. */
+        extern CType* ctype_raw(CTState* cts, CTypeID id);
+
+        /* Get raw type of the child of a C type. */
+        extern CType* ctype_rawchild(CTState* cts, CType* ct);
     }
 
     // This contains all the API functions grabbed by interstellar with some extensions
@@ -1180,6 +1405,7 @@ namespace INTERSTELLAR_NAMESPACE {
             extern void* checkuserdatatype(lua_State* L, int index, int type);
             extern void checkcfunction(lua_State* L, int index);
             extern void checklfunction(lua_State* L, int index);
+            extern void checkcdata(lua_State* L, int index);
             extern void checkproto(lua_State* L, int index);
             extern void checktable(lua_State* L, int index);
             extern int newref(lua_State* L, int index);
@@ -1394,6 +1620,7 @@ namespace INTERSTELLAR_NAMESPACE {
             extern bool istable(lua_State* L, int index);
             extern bool isfunction(lua_State* L, int index);
             extern bool islfunction(lua_State* L, int index);
+            extern bool iscdata(lua_State* L, int index);
             extern bool isproto(lua_State* L, int index);
             extern bool isuserdatatype(lua_State* L, int index, int type);
             extern bool isthread(lua_State* L, int index);
@@ -1401,6 +1628,8 @@ namespace INTERSTELLAR_NAMESPACE {
             extern void pop(lua_State* L, int count = 1);
             extern void newuserdatatype(lua_State* L, void* data, size_t size, unsigned char type);
             extern void* touserdatatype(lua_State* L, int index);
+            extern void* tocdataptr(lua_State* L, int index);
+            extern void* tocdatafunc(lua_State* L, int index);
             extern void pushcfunction(lua_State* L, lua_CFunction f);
             extern void pushlfunction(lua_State* L, Engine::GCproto* proto, Engine::GCupval* upvptr = nullptr, int upvalues = 0);
             extern void pushnfunction(lua_State* L, std::string name = "");
