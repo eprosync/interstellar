@@ -29,11 +29,6 @@
 
 namespace INTERSTELLAR_NAMESPACE::Memory {
     using namespace API;
-    std::map<uintptr_t, int> address_meta;
-
-    void cleanup(lua_State* L) {
-        address_meta.erase(Tracker::id(L));
-    }
     
     #ifdef __linux
     #define UMODULE void*
@@ -523,6 +518,12 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             using namespace Engine;
             void* udata = lua::touserdata(L, 1);
             push_address(L, (void*)udata);
+            return 1;
+        }
+        else if (lua::iscdata(L, 1))
+        {
+            using namespace Engine;
+
             return 1;
         }
         uintptr_t addr = luaL::checknumber(L, 1);
@@ -1542,7 +1543,6 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
     void api()
     {
-        address_meta = std::map<uintptr_t, int>();
         if (OS::ARGV::exists("memory")) {
             Tracker::on_close("memory", cleanup);
             Reflection::add("memory", push);

@@ -172,6 +172,10 @@ namespace INTERSTELLAR_NAMESPACE {
                 }
             }
 
+            void checkcdata(lua_State* L, int index) {
+                luaL::checktype(L, index, datatype::cdata);
+            }
+
             void checkproto(lua_State* L, int index) {
                 luaL::checktype(L, index, datatype::proto);
             }
@@ -361,16 +365,16 @@ namespace INTERSTELLAR_NAMESPACE {
 
             #ifdef INTERSTELLAR_EXTERNAL
             #define include(hndle, name, offset) \
-                    { void* f = grab(hndle, "lua_" #name); if (f == NULL) { printf("[Interstellar] couldn't locate lua_" #name "\n"); return offset; } name = cast<type::name>(f); offset++; }
+                { void* f = grab(hndle, "lua_" #name); if (f == NULL) { printf("[Interstellar] couldn't locate lua_" #name "\n"); return offset; } name = cast<type::name>(f); offset++; }
 
             #define includeA(hndle, real, name, offset) \
-                    { void* f = grab(hndle, "lua_" #real); if (f == NULL) { printf("[Interstellar] couldn't locate lua_" #real "\n"); return offset; } name = cast<type::name>(f); offset++; }
+                { void* f = grab(hndle, "lua_" #real); if (f == NULL) { printf("[Interstellar] couldn't locate lua_" #real "\n"); return offset; } name = cast<type::name>(f); offset++; }
             #else
             #define include(hndle, name, offset) \
-                    name = cast<type::name>(Engine::lua_##name);
+                name = cast<type::name>(Engine::lua_##name);
 
             #define includeA(hndle, real, name, offset) \
-                    name = cast<type::name>(Engine::lua_##real);
+                name = cast<type::name>(Engine::lua_##real);
             #endif
 
             int fetch(UMODULE hndle)
@@ -590,7 +594,7 @@ namespace INTERSTELLAR_NAMESPACE {
                 }
 
                 if (type == 0) type = ~data->gch.gct;
-                
+
                 #if LJ_GC64
                     setgcreft(value->gcr, data, type);
                 #else
@@ -677,6 +681,11 @@ namespace INTERSTELLAR_NAMESPACE {
                 return gettype(L, index) == datatype::function && !lua::iscfunction(L, index);
             }
 
+            bool iscdata(lua_State* L, int index)
+            {
+                return gettype(L, index) == datatype::cdata;
+            }
+
             bool isuserdatatype(lua_State* L, int index, int type) {
                 if (gettype(L, index) != datatype::userdata) {
                     return false;
@@ -719,6 +728,13 @@ namespace INTERSTELLAR_NAMESPACE {
             void* touserdatatype(lua_State* L, int index) {
                 lua_udata* userdata = (lua_udata*)lua::touserdata(L, index);
                 return userdata->data;
+            }
+
+            void* tocdata(lua_State* L, int index)
+            {
+                using namespace Engine;
+                TValue* tv = toraw(L, index);
+                GCcdata* cdata = cdataV(tv);
             }
 
             void pushcfunction(lua_State* L, lua_CFunction f)

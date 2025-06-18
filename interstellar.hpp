@@ -1038,6 +1038,7 @@ namespace INTERSTELLAR_NAMESPACE {
             constexpr int userdata = 7;
             constexpr int thread = 8;
             constexpr int proto = 9;
+            constexpr int cdata = 10;
         }
 
         namespace indexer {
