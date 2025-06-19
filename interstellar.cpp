@@ -1646,15 +1646,17 @@ namespace INTERSTELLAR_NAMESPACE {
         void pre_remove(lua_State* L) {
             state_tracking* tracker = get_tracker(L);
 
+            if (tracker == nullptr) return;
+
             for (auto& state : tracker->children)
             {
                 if (Tracker::is_internal(state.self)) continue;
                 Reflection::close(state.self);
             }
 
-            auto lock = Tracker::lock(L);
             destroy(L);
 
+            auto lock = Tracker::lock(L);
             auto& dispatch = get_closing();
             for (auto& [key, callback] : dispatch) {
                 callback(L);
@@ -1663,6 +1665,8 @@ namespace INTERSTELLAR_NAMESPACE {
         }
 
         void post_remove(lua_State* L) {
+            state_tracking* tracker = get_tracker(L);
+            if (tracker == nullptr) return;
             auto lock = Tracker::lock(L);
             Class::cleanup(L);
             if (lock.owns_lock()) lock.unlock(); lock.release();
