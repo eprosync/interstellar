@@ -128,8 +128,16 @@ namespace INTERSTELLAR_NAMESPACE::FS {
 
     int canonical(lua_State* L) {
         std::string file_path = luaL::checkcstring(L, 1);
-        std::filesystem::path full_path = std::filesystem::weakly_canonical(file_path);
-        lua::pushcstring(L, full_path.string());
+        std::filesystem::path root = std::filesystem::path(root_path);
+        std::filesystem::path combined = root / file_path;
+        std::filesystem::path normalized = combined.lexically_normal();
+
+        if (std::mismatch(root.begin(), root.end(), normalized.begin()).first != root.end()) {
+            return 1;
+        }
+
+        std::filesystem::path relative = std::filesystem::relative(normalized, root);
+        lua::pushcstring(L, relative.string());
         return 1;
     }
 
