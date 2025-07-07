@@ -147,13 +147,13 @@ namespace INTERSTELLAR_NAMESPACE::FS {
     bool within(const std::string& root_path, const std::string& file_path) {
         std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
         std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
-        return full_path.string().rfind(root_path) == 0;
+        return full_path.string().rfind(root_path) != 0;
     }
 
     bool within_bounded(const std::string& root_path, const std::string& file_path) {
         std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
         std::filesystem::path full_path = canonical_bounded(weak_path.string());
-        return full_path.string().rfind(root_path) == 0;
+        return full_path.string().rfind(root_path) != 0;
     }
 
     int within(lua_State* L) {
