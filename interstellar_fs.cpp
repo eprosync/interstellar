@@ -126,18 +126,21 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         ".exe", ".scr", ".bat", ".com", ".csh", ".msi", ".vb", ".vbs", ".vbe", ".ws", ".wsf", ".wsh", ".ps1"
     };
 
-    int canonical(lua_State* L) {
-        std::string file_path = luaL::checkcstring(L, 1);
+    std::filesystem::path canonical_bounded(const std::string file_path) {
         std::filesystem::path root = std::filesystem::path(root_path);
         std::filesystem::path combined = root / file_path;
         std::filesystem::path normalized = combined.lexically_normal();
 
         if (std::mismatch(root.begin(), root.end(), normalized.begin()).first != root.end()) {
-            return 1;
+            return std::filesystem::path("");
         }
 
-        std::filesystem::path relative = std::filesystem::relative(normalized, root);
-        lua::pushcstring(L, relative.string());
+        return std::filesystem::relative(normalized, root);
+    }
+
+    int canonical(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        lua::pushcstring(L, canonical_bounded(file_path).string());
         return 1;
     }
 
@@ -147,10 +150,16 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         return full_path.string().rfind(root_path) == 0;
     }
 
+    bool within_bounded(const std::string& root_path, const std::string& file_path) {
+        std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
+        std::filesystem::path full_path = canonical_bounded(weak_path);
+        return full_path.string().rfind(root_path) == 0;
+    }
+
     int within(lua_State* L) {
         std::string root_path = luaL::checkcstring(L, 1);
         std::string file_path = luaL::checkcstring(L, 2);
-        lua::pushboolean(L, within(root_path, file_path));
+        lua::pushboolean(L, within_bounded(root_path, file_path));
         return 1;
     }
 
