@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "interstellar_fs.hpp"
+#include "interstellar.hpp"
 #include "interstellar_buffer.hpp"
 
 #include <unordered_set>
@@ -125,10 +126,24 @@ namespace INTERSTELLAR_NAMESPACE::FS {
         ".exe", ".scr", ".bat", ".com", ".csh", ".msi", ".vb", ".vbs", ".vbe", ".ws", ".wsf", ".wsh", ".ps1"
     };
 
+    int canonical(lua_State* L) {
+        std::string file_path = luaL::checkcstring(L, 1);
+        std::filesystem::path full_path = std::filesystem::weakly_canonical(file_path);
+        lua::pushcstring(L, full_path.string());
+        return 1;
+    }
+
     bool within(const std::string& root_path, const std::string& file_path) {
         std::filesystem::path weak_path = std::filesystem::path(root_path) / std::filesystem::path(file_path);
         std::filesystem::path full_path = std::filesystem::weakly_canonical(weak_path);
         return full_path.string().rfind(root_path) == 0;
+    }
+
+    int within(lua_State* L) {
+        std::string root_path = luaL::checkcstring(L, 1);
+        std::string file_path = luaL::checkcstring(L, 2);
+        lua::pushboolean(L, within(root_path, file_path));
+        return 1;
     }
 
     std::string localize(const std::string& root_path, const std::string& file_path) {
@@ -1117,6 +1132,12 @@ namespace INTERSTELLAR_NAMESPACE::FS {
 
         lua::pushcfunction(L, backward);
         lua::setfield(L, -2, "backward");
+
+        lua::pushcfunction(L, within);
+        lua::setfield(L, -2, "within");
+
+        lua::pushcfunction(L, canonical);
+        lua::setfield(L, -2, "canonical");
     }
 
     void api(std::string root) {
