@@ -1864,7 +1864,8 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
                 if (type == ~LJ_TUDATA
                     || type == ~LJ_TPROTO
                     || type == ~LJ_TFUNC
-                    || type == ~LJ_TTAB)
+                    || type == ~LJ_TTAB
+                    || type == ~LJ_TCDATA)
                 {
                     lua::pushnumber(L, id++);
                     lua::pushraw(L, gcobject);
@@ -1934,6 +1935,12 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
                     break;
                 }
                 case ~LJ_TTAB: {
+                    lua::pushnumber(L, id++);
+                    lua::pushraw(L, gcobject);
+                    lua::settable(L, -3);
+                    break;
+                }
+                case ~LJ_TCDATA: {
                     lua::pushnumber(L, id++);
                     lua::pushraw(L, gcobject);
                     lua::settable(L, -3);
