@@ -1,6 +1,6 @@
 /*
 ** Garbage collector.
-** Copyright (C) 2005-2017 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2025 Mike Pall. See Copyright Notice in luajit.h
 */
 
 #ifndef _LJ_GC_H
@@ -23,6 +23,8 @@ enum {
 #define LJ_GC_CDATA_FIN	0x10
 #define LJ_GC_FIXED	0x20
 #define LJ_GC_SFIXED	0x40
+#define LJ_GC_READONLY	0x80
+#define LJ_GC_BLOCKDEBUG  0x80 // Same as LJ_GC_READONLY, but we'll use this one for functions.
 
 #define LJ_GC_WHITES	(LJ_GC_WHITE0 | LJ_GC_WHITE1)
 #define LJ_GC_COLORS	(LJ_GC_WHITES | LJ_GC_BLACK)
@@ -45,31 +47,13 @@ enum {
 #define fixstring(s)	((s)->marked |= LJ_GC_FIXED)
 #define markfinalized(x)	((x)->gch.marked |= LJ_GC_FINALIZED)
 
-/* GC check: drive collector forward if the GC threshold has been reached. */
-#define lj_gc_check(L) \
-  { if (LJ_UNLIKELY(G(L)->gc.total >= G(L)->gc.threshold)) \
-      lj_gc_step(L); }
-#define lj_gc_check_fixtop(L) \
-  { if (LJ_UNLIKELY(G(L)->gc.total >= G(L)->gc.threshold)) \
-      lj_gc_step_fixtop(L); }
+#define isreadonly(x)	((x)->marked & LJ_GC_READONLY)
+#define markreadonly(x) ((x)->marked |= LJ_GC_READONLY)
+#define unmarkreadonly(x) ((x)->marked &= ~LJ_GC_READONLY)
 
-/* Barrier for stores to table objects. TValue and GCobj variant. */
-#define lj_gc_anybarriert(L, t)  \
-  { if (LJ_UNLIKELY(isblack(obj2gco(t)))) lj_gc_barrierback(G(L), (t)); }
-#define lj_gc_barriert(L, t, tv) \
-  { if (tviswhite(tv) && isblack(obj2gco(t))) \
-      lj_gc_barrierback(G(L), (t)); }
-#define lj_gc_objbarriert(L, t, o)  \
-  { if (iswhite(obj2gco(o)) && isblack(obj2gco(t))) \
-      lj_gc_barrierback(G(L), (t)); }
-
-/* Barrier for stores to any other object. TValue and GCobj variant. */
-#define lj_gc_barrier(L, p, tv) \
-  { if (tviswhite(tv) && isblack(obj2gco(p))) \
-      lj_gc_barrierf(G(L), obj2gco(p), gcV(tv)); }
-#define lj_gc_objbarrier(L, p, o) \
-  { if (iswhite(obj2gco(o)) && isblack(obj2gco(p))) \
-      lj_gc_barrierf(G(L), obj2gco(p), obj2gco(o)); }
+#define isblockdebug(x) ((x).marked & LJ_GC_BLOCKDEBUG)
+#define markblockdebug(x) ((x).marked |= LJ_GC_BLOCKDEBUG)
+#define unmarkblockdebug(x) ((x).marked &= ~LJ_GC_BLOCKDEBUG)
 
 #define lj_mem_new(L, s)	lj_mem_realloc(L, NULL, 0, (s))
 
