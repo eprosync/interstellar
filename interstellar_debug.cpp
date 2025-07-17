@@ -37,14 +37,15 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
     }
 
     #define uddata(u)	((void *)((u)+1))
-    const void* lj_obj_ptr(Engine::TValue* o)
+    const void* lj_obj_ptr(lua_State* L, Engine::TValue* o)
     {
         using namespace Engine;
+        global_State* g = G(L);
 
         if (tvisudata(o))
             return uddata(udataV(o));
         else if (tvislightud(o))
-            return lightudV(o);
+            return lightudV(g, o);
         else if (LJ_HASFFI && tviscdata(o))
             return cdataptr(cdataV(o));
         else if (tvisgcv(o))
@@ -66,7 +67,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
             return 0;
         }
 
-        uintptr_t pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, -1));
+        uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, -1));
         uintptr_t id = Tracker::id(L);
         lua::pop(L);
 
@@ -105,7 +106,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
     uintptr_t closure_pointer = 0;
     int runtime_topointer(lua_State* L)
     {
-        closure_pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, 1));
+        closure_pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, 1));
         return 0;
     }
 
@@ -310,7 +311,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
                 return false;
             }
 
-            uintptr_t pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, index));
+            uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, index));
             uintptr_t id = Tracker::id(L);
 
             if (hooking_lua_linkages.find(id) != hooking_lua_linkages.end()) {
@@ -345,7 +346,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
                 return false;
             }
 
-            uintptr_t pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, index));
+            uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, index));
             uintptr_t id = Tracker::id(L);
 
             if (hooking_lua_linkages.find(id) != hooking_lua_linkages.end()) {
@@ -363,7 +364,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
                 return false;
             }
 
-            uintptr_t pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, index));
+            uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, index));
             uintptr_t id = Tracker::id(L);
 
             if (hooking_c_linkages.find(id) != hooking_c_linkages.end()) {
@@ -455,7 +456,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
                 return 0;
             }
 
-            uintptr_t pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, -1));
+            uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, -1));
             uintptr_t id = Tracker::id(L);
             lua::pop(L);
 
@@ -505,7 +506,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
                 return 0;
             }
 
-            uintptr_t pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, 1));
+            uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, 1));
             uintptr_t id = Tracker::id(L);
 
             if (lua::iscfunction(L, 1)) { // hooking_c_linkages
@@ -750,7 +751,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
                 return 0;
             }
 
-            uintptr_t pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, 1));
+            uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, 1));
             uintptr_t id = Tracker::id(L);
 
             if (is_lua(L, 1)) {
@@ -822,7 +823,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
             uintptr_t id = Tracker::id(L);
 
             if (is_lua(L, 1)) {
-                uintptr_t pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, 1));
+                uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, 1));
                 int lua_reference = hooking_lua_linkages[id][pointer];
                 int lua_original = hooking_lua_originals[id][pointer];
 
@@ -858,7 +859,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
                 luaL::rmref(L, lua_original);
             }
             else if (is_c(L, 1)) {
-                uintptr_t pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, 1));
+                uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, 1));
 
                 if (hooking_state[id][pointer]) {
                     TValue* tv_target = lua::toraw(L, 1);
@@ -910,7 +911,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
                     break;
                 }
 
-                uintptr_t pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, -1));
+                uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, -1));
                 uintptr_t id = Tracker::id(L);
                 lua::pop(L);
 
@@ -937,7 +938,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
                 return 1;
             }
 
-            uintptr_t pointer = (uintptr_t)lj_obj_ptr(lua::toraw(L, 1));
+            uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, lua::toraw(L, 1));
             uintptr_t id = Tracker::id(L);
 
             lua::pushboolean(L, hooking_state[id][pointer]);
@@ -958,7 +959,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
 
             if (is_lua(L, 1)) {
                 TValue* tv_target = lua::toraw(L, 1);
-                uintptr_t pointer = (uintptr_t)lj_obj_ptr(tv_target);
+                uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, tv_target);
 
                 if (hooking_state[id][pointer]) {
                     lua::pushboolean(L, false);
@@ -991,7 +992,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
             }
             else if (is_c(L, 1)) {
                 TValue* tv_target = lua::toraw(L, 1);
-                uintptr_t pointer = (uintptr_t)lj_obj_ptr(tv_target);
+                uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, tv_target);
 
                 if (hooking_state[id][pointer]) {
                     lua::pushboolean(L, false);
@@ -1037,7 +1038,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
 
             if (is_lua(L, 1)) {
                 TValue* tv_target = lua::toraw(L, 1);
-                uintptr_t pointer = (uintptr_t)lj_obj_ptr(tv_target);
+                uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, tv_target);
 
                 if (!hooking_state[id][pointer]) {
                     lua::pushboolean(L, false);
@@ -1070,7 +1071,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
             }
             else if (is_c(L, 1)) {
                 TValue* tv_target = lua::toraw(L, 1);
-                uintptr_t pointer = (uintptr_t)lj_obj_ptr(tv_target);
+                uintptr_t pointer = (uintptr_t)lj_obj_ptr(L, tv_target);
 
                 if (!hooking_state[id][pointer]) {
                     lua::pushboolean(L, false);
@@ -1150,7 +1151,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
 
     int topointer(lua_State* L)
     {
-        const void* pointer = lj_obj_ptr(lua::toraw(L, 1));
+        const void* pointer = lj_obj_ptr(L, lua::toraw(L, 1));
 
         if (lua::istype(L, 2, datatype::boolean) && lua::toboolean(L, 2)) {
             lua::pushstring(L, lj_strfmt_wptr(pointer));
@@ -2526,7 +2527,7 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
     {
         lua_State* target = Reflection::CAPI::from_class(L, 1); if (target == nullptr) return 0;
         int index = luaL::checknumber(L, 2);
-        const void* pointer = lj_obj_ptr(lua::toraw(target, index));
+        const void* pointer = lj_obj_ptr(L, lua::toraw(target, index));
 
         if (lua::istype(L, 3, datatype::boolean) && lua::toboolean(L, 3)) {
             lua::pushstring(L, lj_strfmt_wptr(pointer));
