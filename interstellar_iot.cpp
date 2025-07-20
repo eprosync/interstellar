@@ -14,6 +14,8 @@
 #include <vector>
 #include <algorithm>
 
+#pragma comment (lib, "iphlpapi.lib")
+#pragma comment (lib, "secur32.lib")
 #pragma comment (lib, "Ws2_32.Lib")
 #pragma comment (lib, "Wldap32.Lib")
 #pragma comment (lib, "Crypt32.Lib")
