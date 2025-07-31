@@ -1524,6 +1524,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             int method_id = req->header().method().raw_id();
             std::string method = std::string(req->header().method().c_str());
             std::string body = std::string(req->body());
+            const restinio::endpoint_t endpoint = req->remote_endpoint();
             std::vector<std::pair<std::string, std::string>> headers;
             for (auto it = req->header().begin(); it != req->header().end(); ++it) {
                 headers.emplace_back(std::pair<std::string, std::string>(it->name(), it->value()));
@@ -1537,10 +1538,38 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             this->request = req;
 
             lua::newtable(L);
+            lua::pushcstring(L, endpoint.address().to_string());
+            lua::setfield(L, -2, "ip");
+            lua::pushnumber(L, endpoint.port());
+            lua::setfield(L, -2, "port");
             lua::pushcstring(L, path);
             lua::setfield(L, -2, "path");
             lua::pushcstring(L, query);
             lua::setfield(L, -2, "query");
+
+            lua::newtable(L);
+            {
+                size_t pos = 0;
+                while (pos < query.size()) {
+                    size_t key_end = query.find('=', pos);
+                    if (key_end == std::string_view::npos) break;
+                    size_t value_end = query.find('&', key_end + 1);
+
+                    std::string key(query.substr(pos, key_end - pos));
+                    std::string value(query.substr(key_end + 1,
+                        (value_end == std::string_view::npos ? query.size() : value_end) - key_end - 1));
+
+                    lua::pushcstring(L, value);
+                    lua::setcfield(L, -2, key);
+
+                    if (value_end == std::string_view::npos)
+                        break;
+
+                    pos = value_end + 1;
+                }
+            }
+            lua::setfield(L, -2, "parameters");
+
             lua::pushcstring(L, method);
             lua::setfield(L, -2, "method");
             lua::pushcstring(L, body);
@@ -1978,7 +2007,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::string path = luaL::checkcstring(L, 2);
 
         if (lua::isnil(L, 3)) {
-            serve->remove("ANY", path);
+            if (serve->exists("ANY", path)) {
+                luaL::rmref(L, serve->get("ANY", path));
+                serve->remove("ANY", path);
+            }
             return 0;
         }
 
@@ -2001,7 +2033,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::string path = luaL::checkcstring(L, 2);
 
         if (lua::isnil(L, 3)) {
-            serve->remove("SOCKET", path);
+            if (serve->exists("SOCKET", path)) {
+                luaL::rmref(L, serve->get("SOCKET", path));
+                serve->remove("SOCKET", path);
+            }
             return 0;
         }
 
@@ -2078,7 +2113,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::string path = luaL::checkcstring(L, 2);
 
         if (lua::isnil(L, 3)) {
-            serve->remove("get", path);
+            if (serve->exists("get", path)) {
+                luaL::rmref(L, serve->get("get", path));
+                serve->remove("get", path);
+            }
             return 0;
         }
 
@@ -2101,17 +2139,15 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::string path = luaL::checkcstring(L, 2);
 
         if (lua::isnil(L, 3)) {
-            serve->remove("head", path);
+            if (serve->exists("head", path)) {
+                luaL::rmref(L, serve->get("head", path));
+                serve->remove("head", path);
+            }
             return 0;
         }
 
         luaL::checkfunction(L, 3);
         int reference = luaL::newref(L, 3);
-
-        if (serve->exists("head", path)) {
-            luaL::rmref(L, serve->get("head", path));
-            serve->remove("head", path);
-        }
 
         serve->add("head", path, reference);
 
@@ -2124,12 +2160,20 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::string path = luaL::checkcstring(L, 2);
 
         if (lua::isnil(L, 3)) {
-            serve->remove("post", path);
+            if (serve->exists("post", path)) {
+                luaL::rmref(L, serve->get("post", path));
+                serve->remove("post", path);
+            }
             return 0;
         }
 
         luaL::checkfunction(L, 3);
         int reference = luaL::newref(L, 3);
+
+        if (serve->exists("post", path)) {
+            luaL::rmref(L, serve->get("post", path));
+            serve->remove("post", path);
+        }
 
         serve->add("post", path, reference);
 
@@ -2142,7 +2186,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::string path = luaL::checkcstring(L, 2);
 
         if (lua::isnil(L, 3)) {
-            serve->remove("put", path);
+            if (serve->exists("put", path)) {
+                luaL::rmref(L, serve->get("put", path));
+                serve->remove("put", path);
+            }
             return 0;
         }
 
@@ -2165,7 +2212,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::string path = luaL::checkcstring(L, 2);
 
         if (lua::isnil(L, 3)) {
-            serve->remove("delete", path);
+            if (serve->exists("delete", path)) {
+                luaL::rmref(L, serve->get("delete", path));
+                serve->remove("delete", path);
+            }
             return 0;
         }
 
@@ -2188,7 +2238,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::string path = luaL::checkcstring(L, 2);
 
         if (lua::isnil(L, 3)) {
-            serve->remove("options", path);
+            if (serve->exists("options", path)) {
+                luaL::rmref(L, serve->get("options", path));
+                serve->remove("options", path);
+            }
             return 0;
         }
 
@@ -2211,7 +2264,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::string path = luaL::checkcstring(L, 2);
 
         if (lua::isnil(L, 3)) {
-            serve->remove("patch", path);
+            if (serve->exists("patch", path)) {
+                luaL::rmref(L, serve->get("patch", path));
+                serve->remove("patch", path);
+            }
             return 0;
         }
 
