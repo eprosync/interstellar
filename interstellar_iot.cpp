@@ -1360,10 +1360,13 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
         void socket_handle(std::string path, rws::ws_handle_t connection, rws::message_handle_t m, bool internal = false) {
             std::unique_lock<std::mutex> lock(sync_mutex);
-            waiting_threads++;
-            sync_cv.wait(lock, [&] { return !processing; });
-            processing = true;
-            waiting_threads--;
+            if (!internal) {
+                waiting_threads++;
+                ready_to_process.wait(lock);
+                waiting_threads--;
+                processing = true;
+            }
+            lock.unlock();
 
             if (handlers.find("SOCKET") != handlers.end()) {
                 auto& handles = handlers["SOCKET"];
@@ -1418,7 +1421,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             if (!internal) {
                 processing = false;
-                sync_cv.notify_one();
+                if (waiting_threads > 0) ready_to_process.notify_one(); else processing_done.notify_one();
             }
         }
 
@@ -1529,9 +1532,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             std::unique_lock<std::mutex> lock(sync_mutex);
             waiting_threads++;
-            sync_cv.wait(lock, [&] { return !processing; });
-            processing = true;
+            ready_to_process.wait(lock);
             waiting_threads--;
+            processing = true;
+            lock.unlock();
 
             this->request = req;
 
@@ -1608,10 +1612,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
-                        {
-                            processing = false;
-                            sync_cv.notify_one();
-                        }
+                        processing = false;
+                        if (waiting_threads > 0) ready_to_process.notify_one(); else processing_done.notify_one();
                         return restinio::request_accepted();
                     }
                 }
@@ -1632,10 +1634,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
-                        {
-                            processing = false;
-                            sync_cv.notify_one();
-                        }
+                        processing = false;
+                        if (waiting_threads > 0) ready_to_process.notify_one(); else processing_done.notify_one();
                         return restinio::request_accepted();
                     }
                 }
@@ -1652,10 +1652,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
-                        {
-                            processing = false;
-                            sync_cv.notify_one();
-                        }
+                        processing = false;
+                        if (waiting_threads > 0) ready_to_process.notify_one(); else processing_done.notify_one();
                         return restinio::request_accepted();
                     }
                 }
@@ -1666,7 +1664,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             this->request = nullptr;
             {
                 processing = false;
-                sync_cv.notify_one();
+                if (waiting_threads > 0) ready_to_process.notify_one(); else processing_done.notify_one();
             }
 
             return restinio::request_not_handled();
@@ -1674,9 +1672,11 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
         void sync() {
             std::unique_lock<std::mutex> lock(sync_mutex);
-            sync_cv.wait(lock, [&] {
-                return waiting_threads == 0 && !processing;
-            });
+            if (waiting_threads > 0) {
+                ready_to_process.notify_one();
+                processing_done.wait(lock);
+            }
+            lock.unlock();
         }
 
         bool start() {
@@ -1717,7 +1717,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         server_t server;
         bool active;
         std::mutex sync_mutex;
-        std::condition_variable sync_cv;
+        std::condition_variable ready_to_process;
+        std::condition_variable processing_done;
         std::atomic<int> waiting_threads = 0;
         std::atomic<bool> processing;
     };
