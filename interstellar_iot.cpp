@@ -1282,9 +1282,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             this->L = L;
             this->port = port;
             this->active = false;
-            this->exchange = false;
             this->processing = false;
-            this->awaiting = 0;
             sockets = std::unordered_map<std::string, std::unordered_map<std::uint64_t, rws::ws_handle_t>>();
             serves[Tracker::id(L)][port] = this;
         }
@@ -1360,13 +1358,11 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         }
 
         void socket_handle(std::string path, rws::ws_handle_t connection, rws::message_handle_t m, bool internal = false) {
-            if (!internal) {
-                int id = awaiting++;
-                while (exchange != id || !exchanging || processing) {
-                    std::this_thread::yield();
-                }
-                processing = true;
-            }
+            std::unique_lock<std::mutex> lock(sync_mutex);
+            waiting_threads++;
+            sync_cv.wait(lock, [&] { return !processing; });
+            processing = true;
+            waiting_threads--;
 
             if (handlers.find("SOCKET") != handlers.end()) {
                 auto& handles = handlers["SOCKET"];
@@ -1420,8 +1416,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             }
 
             if (!internal) {
-                exchange++;
                 processing = false;
+                sync_cv.notify_one();
             }
         }
 
@@ -1530,11 +1526,12 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 headers.emplace_back(std::pair<std::string, std::string>(it->name(), it->value()));
             }
 
-            int id = awaiting++;
-            while (exchange != id || !exchanging || processing) {
-                std::this_thread::yield();
-            }
+            std::unique_lock<std::mutex> lock(sync_mutex);
+            waiting_threads++;
+            sync_cv.wait(lock, [&] { return !processing; });
             processing = true;
+            waiting_threads--;
+
             this->request = req;
 
             lua::newtable(L);
@@ -1610,8 +1607,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
-                        exchange++;
-                        processing = false;
+                        {
+                            processing = false;
+                            sync_cv.notify_one();
+                        }
                         return restinio::request_accepted();
                     }
                 }
@@ -1632,8 +1631,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
-                        exchange++;
-                        processing = false;
+                        {
+                            processing = false;
+                            sync_cv.notify_one();
+                        }
                         return restinio::request_accepted();
                     }
                 }
@@ -1650,8 +1651,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
-                        exchange++;
-                        processing = false;
+                        {
+                            processing = false;
+                            sync_cv.notify_one();
+                        }
                         return restinio::request_accepted();
                     }
                 }
@@ -1660,19 +1663,19 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             luaL::rmref(L, tbl_reference);
 
             this->request = nullptr;
-            exchange++;
-            processing = false;
+            {
+                processing = false;
+                sync_cv.notify_one();
+            }
 
             return restinio::request_not_handled();
         }
 
         void sync() {
-            if (awaiting == 0) return;
-            exchanging = true;
-            while (awaiting != exchange || processing) {
-                std::this_thread::yield();
-            }
-            exchanging = false;
+            std::unique_lock<std::mutex> lock(sync_mutex);
+            sync_cv.wait(lock, [&] {
+                return waiting_threads == 0 && !processing;
+            });
         }
 
         bool start() {
@@ -1712,10 +1715,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         context_t context;
         server_t server;
         bool active;
-        std::atomic<bool> exchanging;
-        std::atomic<unsigned int> exchange;
+        std::mutex sync_mutex;
+        std::condition_variable sync_cv;
+        std::atomic<int> waiting_threads = 0;
         std::atomic<bool> processing;
-        std::atomic<unsigned int> awaiting;
     };
 
     class Serve_Socket
