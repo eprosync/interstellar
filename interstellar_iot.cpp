@@ -8,6 +8,7 @@
 #include <mutex>
 #include <queue>
 #include <atomic>
+#include <condition_variable>
 #include <map>
 #include <unordered_map>
 #include <functional>
