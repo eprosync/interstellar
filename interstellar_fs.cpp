@@ -629,7 +629,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
                 std::string file_content((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
                 std::unique_lock<std::mutex> guard(async_lock);
                 queue_read.push_back(std::tuple(id, reference, true, file_content));
-                guard.unlock();
+                guard.unlock(); guard.release();
                 }).detach();
             return 0;
         }
@@ -709,7 +709,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
                 if (!outfile.is_open()) {
                     std::unique_lock<std::mutex> guard(async_lock);
                     queue_write.push_back(std::tuple(id, reference, false));
-                    guard.unlock();
+                    guard.unlock(); guard.release();
                     return 0;
                 }
 
@@ -718,7 +718,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
 
                 std::unique_lock<std::mutex> guard(async_lock);
                 queue_write.push_back(std::tuple(id, reference, true));
-                guard.unlock();
+                guard.unlock(); guard.release();
                 }).detach();
         }
         else {
@@ -813,7 +813,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
                 if (!outfile.is_open()) {
                     std::unique_lock<std::mutex> guard(async_lock);
                     queue_append.push_back(std::tuple(id, reference, false));
-                    guard.unlock();
+                    guard.unlock(); guard.release();
                     return 0;
                 }
 
@@ -822,7 +822,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
 
                 std::unique_lock<std::mutex> guard(async_lock);
                 queue_append.push_back(std::tuple(id, reference, true));
-                guard.unlock();
+                guard.unlock(); guard.release();
             }).detach();
 
             return 0;
@@ -961,7 +961,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
             }
         }
 
-        guard.unlock();
+        guard.unlock(); guard.release();
     }
 
     void runtime()
@@ -1081,7 +1081,7 @@ namespace INTERSTELLAR_NAMESPACE::FS {
             }
         }
 
-        guard.unlock();
+        guard.unlock(); guard.release();
     }
 
     void push(lua_State* L, UMODULE handle) {

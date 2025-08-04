@@ -249,13 +249,13 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             if (http_queue.empty()) {
                 http_threads--;
-                lock.unlock();
+                lock.unlock(); lock.release();
                 break;
             }
 
             auto [id, reference, reference_progress, url, method, body, headers, params] = http_queue.front();
             http_queue.pop();
-            lock.unlock();
+            lock.unlock(); lock.release();
 
             cpr::cpr_off_t last_downloadTotal = 0, last_downloadNow = 0, last_uploadTotal = 0, last_uploadNow = 0;
 
@@ -415,13 +415,13 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             if (stream_queue.empty()) {
                 stream_threads--;
-                lock.unlock();
+                lock.unlock(); lock.release();
                 break;
             }
 
             auto [id, reference, reference_progress, url, method, body, headers, params] = stream_queue.front();
             stream_queue.pop();
-            lock.unlock();
+            lock.unlock(); lock.release();
 
             cpr::Header response_headers;
 
@@ -1289,7 +1289,6 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         }
 
         ~Serve() {
-            this->stop();
             uintptr_t id = Tracker::id(L);
             auto it = serves.find(id);
             if (it != serves.end()) {
@@ -1299,6 +1298,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     handlers.erase(it2);
                 }
             }
+            this->stop();
         }
 
         void add(std::string method, std::string path, int reference)
@@ -1359,14 +1359,24 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         }
 
         void socket_handle(std::string path, rws::ws_handle_t connection, rws::message_handle_t m, bool internal = false) {
-            std::unique_lock<std::mutex> lock(sync_mutex);
-            if (!internal) {
-                waiting_threads++;
-                ready_to_process.wait(lock);
-                waiting_threads--;
-                processing = true;
+            if (!this->active) {
+                return;
             }
-            lock.unlock();
+
+            if (!internal) {
+                waiting++;
+                std::unique_lock<std::mutex> lock(schedule_mutex);
+                ready_to_process.wait(lock);
+                waiting--;
+                processing = true;
+                lock.unlock(); lock.release();
+            }
+
+            if (!this->active) {
+                processing = false;
+                if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
+                return;
+            }
 
             if (handlers.find("SOCKET") != handlers.end()) {
                 auto& handles = handlers["SOCKET"];
@@ -1421,7 +1431,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             if (!internal) {
                 processing = false;
-                if (waiting_threads > 0) ready_to_process.notify_one(); else processing_done.notify_one();
+                if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
             }
         }
 
@@ -1530,12 +1540,22 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 headers.emplace_back(std::pair<std::string, std::string>(it->name(), it->value()));
             }
 
-            std::unique_lock<std::mutex> lock(sync_mutex);
-            waiting_threads++;
-            ready_to_process.wait(lock);
-            waiting_threads--;
+            if (!this->active) {
+                return restinio::request_not_handled();
+            }
+
+            waiting++;
+            std::unique_lock<std::mutex> lock(schedule_mutex);
+            ready_to_process.wait(lock, [this] { return !processing.load(); });
+            waiting--;
             processing = true;
-            lock.unlock();
+            lock.unlock(); lock.release();
+
+            if (!this->active) {
+                processing = false;
+                if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
+                return restinio::request_not_handled();
+            }
 
             this->request = req;
 
@@ -1613,7 +1633,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
                         processing = false;
-                        if (waiting_threads > 0) ready_to_process.notify_one(); else processing_done.notify_one();
+                        if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
                         return restinio::request_accepted();
                     }
                 }
@@ -1635,7 +1655,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
                         processing = false;
-                        if (waiting_threads > 0) ready_to_process.notify_one(); else processing_done.notify_one();
+                        if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
                         return restinio::request_accepted();
                     }
                 }
@@ -1653,7 +1673,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
                         processing = false;
-                        if (waiting_threads > 0) ready_to_process.notify_one(); else processing_done.notify_one();
+                        if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
                         return restinio::request_accepted();
                     }
                 }
@@ -1662,21 +1682,21 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             luaL::rmref(L, tbl_reference);
 
             this->request = nullptr;
-            {
-                processing = false;
-                if (waiting_threads > 0) ready_to_process.notify_one(); else processing_done.notify_one();
-            }
+            processing = false;
+            if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
 
             return restinio::request_not_handled();
         }
 
         void sync() {
-            std::unique_lock<std::mutex> lock(sync_mutex);
-            if (waiting_threads > 0) {
+            if (waiting > 0) {
                 ready_to_process.notify_one();
-                processing_done.wait(lock);
+                std::unique_lock<std::mutex> lock(sync_mutex);
+                processing_done.wait(lock, [this]() {
+                    return waiting.load() == 0 && !processing.load();
+                });
+                lock.unlock(); lock.release();
             }
-            lock.unlock();
         }
 
         bool start() {
@@ -1685,11 +1705,11 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 this->server = restinio::run_async(
                     this->context,
                     restinio::server_settings_t<restinio::default_traits_t>{}
-                .port(this->port)
+                    .port(this->port)
                     .address("0.0.0.0")
                     .request_handler([this](request_handle_t req) {
-                    return this->process(req);
-                        }), 4);
+                        return this->process(req);
+                    }), 4);
             }
             catch (const std::exception& ex) {
                 return false;
@@ -1700,10 +1720,11 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
         void stop() {
             if (!this->active) return;
+            this->active = false;
+            this->sync();
             this->server->stop();
             this->server->wait();
             this->server.reset();
-            this->active = false;
         }
 
         uint16_t get_port() { return port; }
@@ -1715,12 +1736,13 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         uint16_t port;
         context_t context;
         server_t server;
-        bool active;
         std::mutex sync_mutex;
+        std::mutex schedule_mutex;
         std::condition_variable ready_to_process;
         std::condition_variable processing_done;
-        std::atomic<int> waiting_threads = 0;
-        std::atomic<bool> processing;
+        std::atomic<bool> active = false;
+        std::atomic<int> waiting = 0;
+        std::atomic<bool> processing = false;
     };
 
     class Serve_Socket
@@ -2485,7 +2507,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             }
         }
 
-        lock_progress.unlock();
+        lock_progress.unlock(); lock_progress.release();
 
 
         std::unique_lock<std::mutex> lock_http(http_response_lock);
@@ -2550,7 +2572,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             }
         }
 
-        lock_http.unlock();
+        lock_http.unlock(); lock_http.release();
 
         std::unique_lock<std::mutex> lock_stream(stream_response_lock);
 
@@ -2661,7 +2683,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             stream_responses.clear();
         }
 
-        lock_stream.unlock();
+        lock_stream.unlock(); lock_stream.release();
 
         if (sockets.size() > 0) {
             for (auto it = sockets.begin(); it != sockets.end(); ) {
@@ -2783,7 +2805,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             }
         }
 
-        lock_progress.unlock();
+        lock_progress.unlock(); lock_progress.release();
 
 
         std::unique_lock<std::mutex> lock_http(http_response_lock);
@@ -2848,7 +2870,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             }
         }
 
-        lock_http.unlock();
+        lock_http.unlock(); lock_http.release();
 
         std::unique_lock<std::mutex> lock_stream(stream_response_lock);
 
@@ -2959,7 +2981,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             stream_responses.clear();
         }
 
-        lock_stream.unlock();
+        lock_stream.unlock(); lock_stream.release();
 
         if (sockets.size() > 0) {
             for (auto it = sockets.begin(); it != sockets.end(); ) {
@@ -3173,15 +3195,12 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             }
         }
 
-        if (serves.size() > 0) {
-            for (auto& serve_entry : serves) {
-                if (serve_entry.first != id) continue;
-                for (auto& entry : serve_entry.second) {
-                    serve_entry.second.erase(entry.first);
-                    delete entry.second;
-                }
+        if (serves.find(id) != serves.end()) {
+            auto handlers = serves[id];
+            for (auto& serve : handlers) {
+                delete serve.second;
             }
-            serves.erase(Tracker::id(L));
+            serves.erase(id);
         }
     }
 

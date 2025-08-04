@@ -74,7 +74,7 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
             }
         }
 
-        lock_guard.unlock();
+        lock_guard.unlock(); lock_guard.release();
     }
 
     void runtime()
@@ -111,7 +111,7 @@ namespace INTERSTELLAR_NAMESPACE::LXZ {
             }
         }
 
-        lock_guard.unlock();
+        lock_guard.unlock(); lock_guard.release();
     }
 
     int lua_z_compress(lua_State* L) {

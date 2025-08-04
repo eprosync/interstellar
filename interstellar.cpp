@@ -1665,8 +1665,6 @@ namespace INTERSTELLAR_NAMESPACE {
         }
 
         void post_remove(lua_State* L) {
-            state_tracking* tracker = get_tracker(L);
-            if (tracker == nullptr) return;
             auto lock = Tracker::lock(L);
             Class::cleanup(L);
             if (lock.owns_lock()) lock.unlock(); lock.release();
