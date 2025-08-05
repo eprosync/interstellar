@@ -1366,9 +1366,9 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             if (!internal) {
                 waiting++;
                 std::unique_lock<std::mutex> lock(schedule_mutex);
-                ready_to_process.wait(lock);
-                waiting--;
+                ready_to_process.wait(lock, [this] { return !processing.load() && syncing.load(); });
                 processing = true;
+                waiting--;
                 lock.unlock(); lock.release();
             }
 
@@ -1546,9 +1546,9 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             waiting++;
             std::unique_lock<std::mutex> lock(schedule_mutex);
-            ready_to_process.wait(lock, [this] { return !processing.load(); });
-            waiting--;
+            ready_to_process.wait(lock, [this] { return !processing.load() && syncing.load(); });
             processing = true;
+            waiting--;
             lock.unlock(); lock.release();
 
             if (!this->active) {
@@ -1690,12 +1690,14 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
         void sync() {
             if (waiting > 0) {
+                syncing = true;
                 ready_to_process.notify_one();
                 std::unique_lock<std::mutex> lock(sync_mutex);
                 processing_done.wait(lock, [this]() {
                     return waiting.load() == 0 && !processing.load();
                 });
                 lock.unlock(); lock.release();
+                syncing = false;
             }
         }
 
@@ -1742,6 +1744,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::condition_variable processing_done;
         std::atomic<bool> active = false;
         std::atomic<int> waiting = 0;
+        std::atomic<bool> syncing = false;
         std::atomic<bool> processing = false;
     };
 
