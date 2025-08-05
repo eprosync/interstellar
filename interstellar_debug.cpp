@@ -1214,23 +1214,29 @@ namespace INTERSTELLAR_NAMESPACE::Debug {
 
         L1 = getthread(L, &arg);
 
+        int slot = luaL::checknumber(L, arg + 2);
+        if (slot < 1) return 0;
+
+        if (tvisfunc(L->base + arg)) {
+            L->top = L->base + arg + 1;
+            lua::pushstring(L, lua::getlocal(L, NULL, slot));
+            return 1;
+        }
+
         lua_Debug ar;
         if (!lua::getstack(L1, luaL::checknumber(L, arg + 1), &ar))
             return luaL::argerror(L, arg + 1, "level out of range");
 
-        int idx = luaL::checknumber(L, arg + 2);
-        if (idx < 1) {
-            return 0;
-        }
-
-        const char* lname = lua::getlocal(L1, &ar, idx);
+        const char* lname = lua::getlocal(L1, &ar, slot);
         if (lname) {
+            lua::xmove(L1, L, 1);
             lua::pushstring(L, lname);
-            lua::insert(L, -2);
+            lua::pushvalue(L, -2);
             return 2;
         }
 
-        return 0;
+        lua::pushnil(L);
+        return 1;
     }
 
     int setupvalue(lua_State* L)
