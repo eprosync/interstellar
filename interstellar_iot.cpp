@@ -1358,6 +1358,11 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             return list;
         }
 
+        void clear()
+        {
+            this->handlers.clear();
+        }
+
         void socket_handle(std::string path, rws::ws_handle_t connection, rws::message_handle_t m, bool internal = false) {
             if (!this->active) {
                 return;
@@ -2137,6 +2142,17 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         return 1;
     }
 
+    int serve_clear(lua_State* L)
+    {
+        Serve* serve = (Serve*)Class::check(L, 1, "serve");
+        auto handles = serve->list();
+        for (auto& handle : handles) {
+            luaL::rmref(L, std::get<2>(handle));
+        }
+        serve->clear();
+        return 0;
+    }
+
     int serve_get(lua_State* L)
     {
         Serve* serve = (Serve*)Class::check(L, 1, "serve");
@@ -2392,6 +2408,9 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
                 lua::pushcfunction(L, serve_socket);
                 lua::setfield(L, -2, "socket");
+
+                lua::pushcfunction(L, serve_clear);
+                lua::setfield(L, -2, "clear");
 
                 lua::pushcfunction(L, serve_any);
                 lua::setfield(L, -2, "any");
