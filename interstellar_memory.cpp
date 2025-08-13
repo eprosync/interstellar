@@ -1544,9 +1544,6 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
     void api()
     {
-        if (OS::ARGV::exists("memory")) {
-            Reflection::add("memory", push);
-            std::cout << "[WARNING] Interstellar has memory.* enabled, you have been warned." << std::endl;
-        }
+        Reflection::add("memory", push);
     }
 }

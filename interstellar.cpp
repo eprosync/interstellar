@@ -1,18 +1,11 @@
 #include <string.h>
 
 #include "interstellar.hpp"
-#include "interstellar_bit.hpp"
-#include "interstellar_coroutine.hpp"
-#include "interstellar_debug.hpp"
-#include "interstellar_math.hpp"
-#include "interstellar_os.hpp"
-#include "interstellar_string.hpp"
-#include "interstellar_table.hpp"
 #include "interstellar_signal.hpp"
-#include "interstellar_buffer.hpp"
 
 #include <vector>
 #include <map>
+#include <unordered_set>
 #include <unordered_map>
 #include <chrono>
 #include <algorithm>
@@ -2715,16 +2708,7 @@ namespace INTERSTELLAR_NAMESPACE {
         if (ret != 0) { errorcode = ret; return ret; }
 
         Tracker::init();
-        Reflection::api();
         Reflection::Task::api();
-        Signal::api();
-        Coroutine::api();
-        Buffer::api();
-        String::api();
-        Debug::api();
-        Table::api();
-        Math::api();
-        OS::api();
 
         return 0;
     }
