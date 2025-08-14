@@ -1238,7 +1238,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
                         for (uintptr_t address = start; address < end; address = address + sizeof(T)) {
                             if (*(T*)address == value) {
                                 lua::pushnumber(L, idx++);
-                                push_address(L, address);
+                                push_address(L, (void*)address);
                                 lua::settable(L, -3);
                             }
                         }
