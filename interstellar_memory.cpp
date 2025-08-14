@@ -594,6 +594,264 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
         return 1;
     }
+    
+    #ifdef _WIN32
+        struct memory_region {
+            uintptr_t base;
+            size_t size;
+            DWORD state;
+            DWORD type;
+            DWORD protect;
+        };
+    #else
+        struct memory_region {
+            uintptr_t base;
+            size_t size;
+            bool r, w, x, p;
+            std::string path;
+        };
+    #endif
+
+    int region__tostring(lua_State* L)
+    {
+        memory_region* _region = (memory_region*)Class::check(L, 1, "region");
+        std::stringstream ss;
+        ss << "region: 0x" << std::hex << _region->base;
+        ss << " - 0x" << std::hex << (_region->base + _region->size);
+        lua::pushcstring(L, ss.str());
+        return 1;
+    }
+
+    #ifdef _WIN32
+        int region__index(lua_State* L)
+        {
+            memory_region* _region = (memory_region*)Class::check(L, 1, "region");
+            std::string index = luaL::checkcstring(L, 2);
+
+            if (index == "base") {
+                push_address(L, (void*)_region->base);
+                return 1;
+            }
+            else if (index == "size") {
+                lua::pushnumber(L, _region->size);
+                return 1;
+            }
+            else if (index == "state") {
+                if (_region->state & MEM_COMMIT) {
+                    lua::pushstring(L, "commit");
+                } else if (_region->state & MEM_FREE) {
+                    lua::pushstring(L, "free");
+                } else if (_region->state & MEM_RESERVE) {
+                    lua::pushstring(L, "reserve");
+                } else {
+                    lua::pushnumber(L, _region->state);
+                }
+                return 1;
+            }
+            else if (index == "type") {
+                if (_region->type == 0) {
+                    lua::pushstring(L, "none");
+                } else if (_region->type & MEM_IMAGE) {
+                    lua::pushstring(L, "image");
+                } else if (_region->type & MEM_MAPPED) {
+                    lua::pushstring(L, "mapped");
+                } else if (_region->type & MEM_PRIVATE) {
+                    lua::pushstring(L, "private");
+                } else {
+                    lua::pushnumber(L, _region->type);
+                }
+                return 1;
+            }
+            else if (index == "protect") {
+                int i = 1;
+                lua::newtable(L);
+
+                #define PUSH_PROT(flag, name)       \
+                    if (_region->protect & flag) {  \
+                        lua::pushnumber(L, i++);    \
+                        lua::pushstring(L, name);   \
+                        lua::settable(L, -3);       \
+                                                    \
+                        lua::pushstring(L, name);   \
+                        lua::pushboolean(L, true);  \
+                        lua::settable(L, -3);       \
+                    }
+
+                PUSH_PROT(PAGE_NOACCESS, "noaccess");
+                PUSH_PROT(PAGE_READONLY, "readonly");
+                PUSH_PROT(PAGE_READWRITE, "readwrite");
+                PUSH_PROT(PAGE_WRITECOPY, "writecopy");
+                PUSH_PROT(PAGE_EXECUTE, "execute");
+                PUSH_PROT(PAGE_EXECUTE_READ, "execute_read");
+                PUSH_PROT(PAGE_EXECUTE_READWRITE, "execute_readwrite");
+                PUSH_PROT(PAGE_EXECUTE_WRITECOPY, "execute_writecopy");
+
+                PUSH_PROT(PAGE_GUARD, "guard");
+                PUSH_PROT(PAGE_NOCACHE, "nocache");
+                PUSH_PROT(PAGE_WRITECOMBINE, "writecombine");
+                return 1;
+            }
+
+            return 0;
+        }
+    #else
+        int region__index(lua_State* L)
+        {
+            memory_region* _region = (memory_region*)Class::check(L, 1, "region");
+            std::string index = luaL::checkcstring(L, 2);
+
+            if (index == "base") {
+                push_address(L, (void*)_region->base);
+                return 1;
+            }
+            else if (index == "size") {
+                lua::pushnumber(L, _region->size);
+                return 1;
+            }
+            else if (index == "state") {
+                lua::pushstring(L, "commit");
+                return 1;
+            }
+            else if (index == "type") {
+                if (_region->p) {
+                    lua::pushstring(L, "private");
+                } else {
+                    lua::pushstring(L, "shared");
+                }
+                return 1;
+            }
+            else if (index == "protect") {
+                int i = 1;
+                lua::newtable(L);
+
+                #define PUSH_PROT(flag, name)        \
+                    if (flag) {                      \
+                        lua::pushnumber(L, i++);     \
+                        lua::pushstring(L, name);    \
+                        lua::settable(L, -3);        \
+                                                     \
+                        lua::pushstring(L, name);    \
+                        lua::pushboolean(L, true);   \
+                        lua::settable(L, -3);        \
+                    }
+                
+                PUSH_PROT(_region->r, "read");
+                PUSH_PROT(_region->w, "write");
+                PUSH_PROT(_region->x, "execute");
+                return 1;
+            }
+
+            return 0;
+        }
+    #endif
+
+    int region__gc(lua_State* L)
+    {
+        if (Class::is(L, 1, "region")) {
+            delete (memory_region*)Class::to(L, 1);
+        }
+        return 0;
+    }
+
+    #ifdef _WIN32
+        void push_region(lua_State* L, MEMORY_BASIC_INFORMATION& mbi)
+        {
+            memory_region* mem_region = new memory_region({
+                (uintptr_t)mbi.BaseAddress,
+                mbi.RegionSize,
+                mbi.State,
+                mbi.Type,
+                mbi.Protect
+            });
+
+            if (!Class::existsbyname(L, "region")) {
+                Class::create(L, "region");
+
+                lua::pushcfunction(L, region__tostring);
+                lua::setfield(L, -2, "__tostring");
+
+                lua::pushcfunction(L, region__index);
+                lua::setfield(L, -2, "__index");
+
+                lua::pushcfunction(L, region__gc);
+                lua::setfield(L, -2, "__gc");
+
+                lua::pop(L);
+            }
+
+            Class::spawn(L, mem_region, "region");
+        }
+    #else
+        void push_region(lua_State* L, memory_region& mbi)
+        {
+            memory_region* mem_region = new memory_region(mbi);
+
+            if (!Class::existsbyname(L, "region")) {
+                Class::create(L, "region");
+
+                lua::pushcfunction(L, region__tostring);
+                lua::setfield(L, -2, "__tostring");
+
+                lua::pushcfunction(L, region__index);
+                lua::setfield(L, -2, "__index");
+
+                lua::pushcfunction(L, region__gc);
+                lua::setfield(L, -2, "__gc");
+
+                lua::pop(L);
+            }
+
+            Class::spawn(L, mem_region, "region");
+        }
+    #endif
+
+    int regions(lua_State* L) {
+        lua::newtable(L);
+        int i = 1;
+
+        #ifdef _WIN32
+            MEMORY_BASIC_INFORMATION mbi;
+            LPVOID addr = 0;
+            HANDLE hProcess = GetCurrentProcess();
+            while (VirtualQueryEx(hProcess, addr, &mbi, sizeof(mbi)) == sizeof(mbi)) {
+                addr = (LPBYTE)addr + mbi.RegionSize;
+                lua::pushnumber(L, i++);
+                push_region(L, mbi);
+                lua::settable(L, -3);
+            }
+        #else
+            std::ifstream maps("/proc/self/maps");
+            std::string line;
+
+            while (std::getline(maps, line)) {
+                std::istringstream iss(line);
+                std::string addr, perms, offset, dev, inode, pathname;
+
+                iss >> addr >> perms >> offset >> dev >> inode;
+                std::getline(iss, pathname);
+                if (!pathname.empty() && pathname[0] == ' ')
+                    pathname.erase(0, 1);
+
+                memory_region region{};
+
+                uintptr_t start, end;
+                sscanf(addr.c_str(), "%lx-%lx", &start, &end);
+                region.base = start;
+                region.size = end - start;
+                region.r = perms[0] == 'r';
+                region.w = perms[1] == 'w';
+                region.x = perms[2] == 'x';
+                region.p = perms[3] == 'p';
+                region.path = pathname;
+
+                lua::pushnumber(L, i++);
+                push_region(L, region);
+                lua::settable(L, -3);
+            }
+        #endif
+
+        return 1;
+    }
 
     bool ends_with(const std::string& str, const std::string& suffix) {
         if (str.length() < suffix.length()) return false;
@@ -877,7 +1135,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         return 1;
     }
 
-    int scanner_hex(lua_State* L) {
+    int aob_hex(lua_State* L) {
         void* address = check_module(L, 1);
         if (address == nullptr) return 0;
         std::string pattern = luaL::checkcstring(L, 2);
@@ -889,7 +1147,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         return 1;
     }
 
-    int scanner_ida(lua_State* L) {
+    int aob_ida(lua_State* L) {
         void* address = check_module(L, 1);
         if (address == nullptr) return 0;
         std::string pattern = luaL::checkcstring(L, 2);
@@ -898,6 +1156,216 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             return 0;
         }
         push_address(L, (void*)result);
+        return 1;
+    }
+
+    inline void scan_get_size(lua_State* L, uintptr_t& base, size_t& size)
+    {
+        if (Class::is(L, 2, "region")) {
+            memory_region* region = (memory_region*)Class::to(L, 2);
+            base = region->base;
+            size = region->size;
+        }
+        else if (Class::is(L, 2, "module")) {
+            memory_module* module = (memory_module*)Class::to(L, 2);
+            base = module->base;
+            size = module->size;
+        }
+        else if (Class::is(L, 2, "address")) {
+            base = (uintptr_t)Class::to(L, 2);
+            uintptr_t end = (uintptr_t)Class::check(L, 3, "address");
+            if (end < base) {
+                luaL::argerror(L, 3, "address is smaller than the base address.");
+            }
+            size = end - base;
+        }
+        else {
+            base = 0;
+            size = 0;
+        }
+    }
+
+    template<typename T>
+    inline void scan_process(lua_State* L, uintptr_t base, size_t size, T value) {
+        lua::newtable(L);
+        int idx = 1;
+
+        if (base == 0 && size == 0) {
+            #ifdef _WIN32
+                MEMORY_BASIC_INFORMATION mbi;
+                LPVOID addr = 0;
+                HANDLE hProcess = GetCurrentProcess();
+                while (VirtualQueryEx(hProcess, addr, &mbi, sizeof(mbi)) == sizeof(mbi)) {
+                    addr = (LPBYTE)addr + mbi.RegionSize;
+                       
+                    DWORD protect = mbi.Protect;
+                    bool can_read = (protect & PAGE_READONLY) || (protect & PAGE_READWRITE) || (protect & PAGE_EXECUTE_READ) || (protect & PAGE_EXECUTE_READWRITE);
+                    bool can_access = !(protect & PAGE_GUARD || protect & PAGE_NOACCESS);
+
+                    uintptr_t base = (uintptr_t)mbi.BaseAddress;
+                    size_t size = mbi.RegionSize;
+
+                    if (can_access && can_read) {
+                        for (uintptr_t i = 0; i < size; i = i + sizeof(T)) {
+                            char* address = (char*)(base + i);
+                            if (*(T*)address == value) {
+                                lua::pushnumber(L, idx++);
+                                push_address(L, address);
+                                lua::settable(L, -3);
+                            }
+                        }
+                    };
+                }
+            #else
+                std::ifstream maps("/proc/self/maps");
+                std::string line;
+
+                while (std::getline(maps, line)) {
+                    std::istringstream iss(line);
+                    std::string addr, perms, offset, dev, inode, pathname;
+
+                    iss >> addr >> perms >> offset >> dev >> inode;
+                    std::getline(iss, pathname);
+                    if (!pathname.empty() && pathname[0] == ' ')
+                        pathname.erase(0, 1);
+
+                    memory_region region{};
+
+                    uintptr_t start, end;
+                    sscanf(addr.c_str(), "%lx-%lx", &start, &end);
+                    
+                    if (perms[0] == 'r') {
+                        for (uintptr_t address = start; address < end; address = address + sizeof(T)) {
+                            if (*(T*)address == value) {
+                                lua::pushnumber(L, idx++);
+                                push_address(L, address);
+                                lua::settable(L, -3);
+                            }
+                        }
+                    }
+                }
+            #endif
+        }
+        else {
+            for (uintptr_t i = 0; i < size; i = i + sizeof(T)) {
+                char* address = (char*)(base + i);
+                if (!is_valid_read(address, sizeof(T))) {
+                    continue;
+                }
+                if (*(T*)address == value) {
+                    lua::pushnumber(L, idx++);
+                    push_address(L, address);
+                    lua::settable(L, -3);
+                }
+            }
+        }
+    }
+
+    int scan_bool(lua_State* L) {
+        bool value = luaL::checkboolean(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_char(lua_State* L) {
+        char value = luaL::checknumber(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_uchar(lua_State* L) {
+        unsigned char value = luaL::checknumber(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_short(lua_State* L) {
+        short value = luaL::checknumber(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_ushort(lua_State* L) {
+        unsigned short value = luaL::checknumber(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_int(lua_State* L) {
+        int value = luaL::checknumber(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_uint(lua_State* L) {
+        unsigned int value = luaL::checknumber(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_long(lua_State* L) {
+        long value = luaL::checknumber(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_ulong(lua_State* L) {
+        unsigned long value = luaL::checknumber(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_float(lua_State* L) {
+        float value = luaL::checknumber(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_double(lua_State* L) {
+        double value = luaL::checknumber(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_address(lua_State* L) {
+        char* value = (char*)Class::check(L, 1, "address");
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, (uintptr_t)value);
         return 1;
     }
 
@@ -1421,6 +1889,9 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         lua::pushcfunction(L, modules);
         lua::setfield(L, -2, "modules");
 
+        lua::pushcfunction(L, regions);
+        lua::setfield(L, -2, "regions");
+
         lua::pushcfunction(L, module);
         lua::setfield(L, -2, "module");
 
@@ -1441,10 +1912,10 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
         lua::newtable(L);
 
-        lua::pushcfunction(L, scanner_ida);
+        lua::pushcfunction(L, aob_ida);
         lua::setfield(L, -2, "ida");
 
-        lua::pushcfunction(L, scanner_hex);
+        lua::pushcfunction(L, aob_hex);
         lua::setfield(L, -2, "hex");
 
         lua::setfield(L, -2, "aob");
@@ -1454,6 +1925,46 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
         lua::pushcfunction(L, relative);
         lua::setfield(L, -2, "relative");
+
+        lua::newtable(L);
+
+        lua::pushcfunction(L, scan_bool);
+        lua::setfield(L, -2, "bool");
+
+        lua::pushcfunction(L, scan_char);
+        lua::setfield(L, -2, "char");
+
+        lua::pushcfunction(L, scan_uchar);
+        lua::setfield(L, -2, "uchar");
+
+        lua::pushcfunction(L, scan_short);
+        lua::setfield(L, -2, "short");
+
+        lua::pushcfunction(L, scan_ushort);
+        lua::setfield(L, -2, "ushort");
+
+        lua::pushcfunction(L, scan_int);
+        lua::setfield(L, -2, "int");
+
+        lua::pushcfunction(L, scan_uint);
+        lua::setfield(L, -2, "uint");
+
+        lua::pushcfunction(L, scan_long);
+        lua::setfield(L, -2, "long");
+
+        lua::pushcfunction(L, scan_ulong);
+        lua::setfield(L, -2, "ulong");
+
+        lua::pushcfunction(L, scan_float);
+        lua::setfield(L, -2, "float");
+
+        lua::pushcfunction(L, scan_double);
+        lua::setfield(L, -2, "double");
+
+        lua::pushcfunction(L, scan_address);
+        lua::setfield(L, -2, "address");
+
+        lua::setfield(L, -2, "scan");
 
         lua::newtable(L);
 
