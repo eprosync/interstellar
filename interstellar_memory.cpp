@@ -24,8 +24,27 @@
 #include <string_view>
 #include <sstream>
 #include <fstream>
-#include <iostream>
 #include <iomanip>
+
+#if defined(_MSC_VER)
+#define BEGIN_NOOPT __pragma(optimize("", off))
+#define END_NOOPT   __pragma(optimize("", on))
+#elif defined(__GNUC__) || defined(__clang__)
+#define BEGIN_NOOPT _Pragma("GCC push_options") \
+                            _Pragma("GCC optimize(\"O0\")")
+#define END_NOOPT   _Pragma("GCC pop_options")
+#else
+#define BEGIN_NOOPT
+#define END_NOOPT
+#endif
+
+#if defined(_MSC_VER)
+#define NOINLINE __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+#define NOINLINE __attribute__((noinline))
+#else
+#define NOINLINE
+#endif
 
 namespace INTERSTELLAR_NAMESPACE::Memory {
     using namespace API;
@@ -217,10 +236,26 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         return 1;
     }
 
+    int address__index(lua_State* L)
+    {
+        char* address = (char*)Class::check(L, 1, "address");
+        std::string index = luaL::checkcstring(L, 2);
+
+        if (index == "raw") {
+            lua::pushinteger(L, (uintptr_t)address);
+            return 1;
+        }
+
+        return 0;
+    }
+
     void push_address(lua_State* L, void* addr)
     {
         if (!Class::existsbyname(L, "address")) {
             Class::create(L, "address");
+
+            lua::pushcfunction(L, address__index);
+            lua::setfield(L, -2, "__index");
 
             lua::pushcfunction(L, address__tostring);
             lua::setfield(L, -2, "__tostring");
@@ -534,7 +569,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
     int allocate(lua_State* L) {
         size_t size = luaL::checknumber(L, 1);
-        push_address(L, malloc(size));
+        push_address(L, malloc(sizeof(unsigned char) * size));
         return 1;
     }
 
@@ -857,6 +892,55 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         #endif
 
         return 1;
+    }
+
+    int region(lua_State* L) {
+        uintptr_t address = (uintptr_t)Class::check(L, 1, "address");
+
+        #ifdef _WIN32
+            MEMORY_BASIC_INFORMATION mbi;
+            LPVOID addr = 0;
+            HANDLE hProcess = GetCurrentProcess();
+            while (VirtualQueryEx(hProcess, addr, &mbi, sizeof(mbi)) == sizeof(mbi)) {
+                addr = (LPBYTE)addr + mbi.RegionSize;
+                
+                if ((uintptr_t)mbi.BaseAddress <= address && (uintptr_t)addr >= address) {
+                    push_region(L, mbi);
+                    return 1;
+                }
+            }
+        #else
+            std::ifstream maps("/proc/self/maps");
+            std::string line;
+
+            while (std::getline(maps, line)) {
+                std::istringstream iss(line);
+                std::string addr, perms, offset, dev, inode, pathname;
+
+                iss >> addr >> perms >> offset >> dev >> inode;
+                std::getline(iss, pathname);
+                if (!pathname.empty() && pathname[0] == ' ')
+                    pathname.erase(0, 1);
+
+                uintptr_t start, end;
+                sscanf(addr.c_str(), "%lx-%lx", &start, &end);
+
+                if (start <= address && end >= address) {
+                    memory_region region{};
+                    region.base = start;
+                    region.size = end - start;
+                    region.r = perms[0] == 'r';
+                    region.w = perms[1] == 'w';
+                    region.x = perms[2] == 'x';
+                    region.p = perms[3] == 'p';
+                    region.path = pathname;
+                    push_region(L, region);
+                    return 1;
+                }
+            }
+        #endif
+
+        return 0;
     }
 
     bool ends_with(const std::string& str, const std::string& suffix) {
@@ -1376,7 +1460,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_bool(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(bool))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1387,7 +1471,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_char(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(char))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1398,7 +1482,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_uchar(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(unsigned char))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1409,7 +1493,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_short(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(short))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1420,7 +1504,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_ushort(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(unsigned short))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1431,7 +1515,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_int(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(int))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1442,7 +1526,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_uint(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(unsigned int))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1453,7 +1537,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_long(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(long))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1464,7 +1548,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_ulong(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(unsigned long))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1475,7 +1559,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_float(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(float))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1486,7 +1570,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_double(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(double))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1497,7 +1581,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_sequence(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
         unsigned int size = luaL::checknumber(L, 2);
 
         if (!is_valid_read(address, sizeof(unsigned char) * size)) {
@@ -1522,7 +1606,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int read_address(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(void*))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1533,7 +1617,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_bool(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_write(address, sizeof(bool))) {
             return luaL::error(L, "invalid write access at address %p", address);
@@ -1544,7 +1628,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_char(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_write(address, sizeof(char))) {
             return luaL::error(L, "invalid write access at address %p", address);
@@ -1570,7 +1654,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_uchar(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_write(address, sizeof(unsigned char))) {
             return luaL::error(L, "invalid write access at address %p", address);
@@ -1596,7 +1680,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_short(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_write(address, sizeof(short))) {
             return luaL::error(L, "invalid write access at address %p", address);
@@ -1622,7 +1706,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_ushort(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_write(address, sizeof(unsigned short))) {
             return luaL::error(L, "invalid write access at address %p", address);
@@ -1648,7 +1732,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_int(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_write(address, sizeof(int))) {
             return luaL::error(L, "invalid write access at address %p", address);
@@ -1674,7 +1758,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_uint(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_write(address, sizeof(unsigned int))) {
             return luaL::error(L, "invalid write access at address %p", address);
@@ -1700,7 +1784,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_long(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_write(address, sizeof(long))) {
             return luaL::error(L, "invalid write access at address %p", address);
@@ -1726,7 +1810,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_ulong(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_write(address, sizeof(unsigned long))) {
             return luaL::error(L, "invalid write access at address %p", address);
@@ -1752,7 +1836,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_float(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_write(address, sizeof(float))) {
             return luaL::error(L, "invalid write access at address %p", address);
@@ -1778,7 +1862,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_double(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_write(address, sizeof(double))) {
             return luaL::error(L, "invalid write access at address %p", address);
@@ -1804,7 +1888,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_sequence(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
         std::string hex_string = luaL::checkcstring(L, 2);
 
         std::string filtered;
@@ -1852,7 +1936,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int write_address(lua_State* L) {
-        char* address = (char*)Class::check(L, 1, "address");
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
 
         if (!is_valid_read(address, sizeof(void*))) {
             return luaL::error(L, "invalid read access at address %p", address);
@@ -1877,6 +1961,667 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
         return 0;
     }
+
+    inline void* subroutine_boundary(lua_State* L, uintptr_t a, uintptr_t b, size_t& actual_size) {
+        uintptr_t start_addr = a < b ? a : b;
+        uintptr_t end_addr = a < b ? b : a;
+        size_t full_size = end_addr - start_addr;
+
+        unsigned char* raw = (unsigned char*)start_addr;
+
+        size_t offset_start = 0;
+        while (offset_start < full_size && raw[offset_start] == 0x00) {
+            offset_start++;
+        }
+
+        size_t offset_end = full_size;
+        while (offset_end > offset_start && raw[offset_end - 1] == 0x00) {
+            offset_end--;
+        }
+
+        actual_size = offset_end - offset_start;
+        void* clone = malloc(actual_size);
+        if (!clone) {
+            luaL::error(L, "out of memory");
+            return nullptr;
+        }
+
+        #if defined(__linux__)
+            uintptr_t page_size = sysconf(_SC_PAGESIZE);
+            uintptr_t page_start = (uintptr_t)clone & ~(page_size - 1);
+
+            int current_prot;
+            if (!get_page_permissions(clone, current_prot)) {
+                luaL::error(L, "failed to assign execution permissions");
+                return nullptr;
+            };
+
+            current_prot |= PROT_EXEC;
+            current_prot |= PROT_READ;
+            current_prot |= PROT_WRITE;
+
+            if (mprotect((void*)page_start, page_size, current_prot) != 0) {
+                luaL::error(L, "failed to assign execution permissions");
+                return nullptr;
+            }
+        #elif defined(_WIN32)
+            DWORD oldProt;
+            if (!VirtualProtect(clone, actual_size, PAGE_EXECUTE_READWRITE, &oldProt)) {
+                luaL::error(L, "failed to assign execution permissions");
+                return nullptr;
+            }
+        #endif
+
+        memcpy(clone, raw + offset_start, actual_size);
+        return clone;
+    }
+    
+    BEGIN_NOOPT // blank
+    #pragma section(".subroutine_blank_routine$a", read, execute)
+    #pragma section(".subroutine_blank_routine$b", read, execute)
+    #pragma section(".subroutine_blank_routine$c", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(allocate(".subroutine_blank_routine$a")) unsigned char subroutine_blank_start_marker = 0;
+            __declspec(code_seg(".subroutine_blank_routine$b"), noinline) void subroutine_blank_routine() {}
+            __declspec(allocate(".subroutine_blank_routine$c")) unsigned char subroutine_blank_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_blank_routine$a"), noinline, used)) void subroutine_blank_start_marker() {}
+            __attribute__((section(".subroutine_blank_routine$b"), noinline, used)) void subroutine_blank_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_blank(lua_State* L) {
+        size_t size;
+        char* ptr = (char*)subroutine_boundary(L, (uintptr_t)&subroutine_blank_start_marker, (uintptr_t)&subroutine_blank_end_marker, size);
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // bool
+    #pragma section(".subroutine_bool_routine$a", read, execute)
+    #pragma section(".subroutine_bool_routine$b", read, execute)
+    #pragma section(".subroutine_bool_routine$c", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(allocate(".subroutine_bool_routine$a")) unsigned char subroutine_bool_start_marker = 0;
+            __declspec(code_seg(".subroutine_bool_routine$b"), noinline) bool subroutine_bool_routine() { return true; }
+            __declspec(allocate(".subroutine_bool_routine$c")) unsigned char subroutine_bool_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_bool_routine$a"), noinline, used)) bool subroutine_bool_start_marker() { return true; }
+            __attribute__((section(".subroutine_bool_routine$b"), noinline, used)) void subroutine_bool_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_bool(lua_State* L) {
+        bool value = luaL::checkboolean(L, 1);
+        size_t size;
+        char* ptr = (char*)subroutine_boundary(L, (uintptr_t)&subroutine_bool_start_marker, (uintptr_t)&subroutine_bool_end_marker, size);
+        for (size_t i = 0; i < size; i++) {
+            if (ptr[i] == 0x01) {
+                *reinterpret_cast<bool*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // char
+    #pragma section(".subroutine_char_routine$a", read, execute)
+    #pragma section(".subroutine_char_routine$b", read, execute)
+    #pragma section(".subroutine_char_routine$c", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(allocate(".subroutine_char_routine$a")) unsigned char subroutine_char_start_marker = 0;
+            __declspec(code_seg(".subroutine_char_routine$b"), noinline) char subroutine_char_routine() { return 0xFF; }
+            __declspec(allocate(".subroutine_char_routine$c")) unsigned char subroutine_char_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_char_routine$a"), noinline, used)) char subroutine_char_start_marker() { return 0xFF; }
+            __attribute__((section(".subroutine_char_routine$b"), noinline, used)) void subroutine_char_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_char(lua_State* L) {
+        char value = luaL::checkinteger(L, 1);
+        size_t size;
+        char* ptr = (char*)subroutine_boundary(L, (uintptr_t)&subroutine_char_start_marker, (uintptr_t)&subroutine_char_end_marker, size);
+        for (size_t i = 0; i < size; i++) {
+            if (ptr[i] == 0xFF) {
+                *reinterpret_cast<char*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // unsigned char
+    #pragma section(".subroutine_uchar_routine$a", read, execute)
+    #pragma section(".subroutine_uchar_routine$b", read, execute)
+    #pragma section(".subroutine_uchar_routine$c", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(allocate(".subroutine_uchar_routine$a")) unsigned char subroutine_uchar_start_marker = 0;
+            __declspec(code_seg(".subroutine_uchar_routine$b"), noinline) unsigned char subroutine_uchar_routine() { return 0xFF; }
+            __declspec(allocate(".subroutine_uchar_routine$c")) unsigned char subroutine_uchar_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_uchar_routine$a"), noinline, used)) unsigned char subroutine_uchar_start_marker() { return 0xFF; }
+            __attribute__((section(".subroutine_uchar_routine$b"), noinline, used)) void subroutine_uchar_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_uchar(lua_State* L) {
+        unsigned char value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_uchar_start_marker, (uintptr_t)&subroutine_uchar_end_marker, size);
+        for (size_t i = 0; i < size; i++) {
+            if (ptr[i] == 0xFF) {
+                *reinterpret_cast<unsigned char*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // short
+    #pragma section(".subroutine_short_routine$a", read, execute)
+    #pragma section(".subroutine_short_routine$b", read, execute)
+    #pragma section(".subroutine_short_routine$c", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(allocate(".subroutine_short_routine$a")) unsigned char subroutine_short_start_marker = 0;
+            __declspec(code_seg(".subroutine_short_routine$b"), noinline) short subroutine_short_routine() { return 0xFFFF; }
+            __declspec(allocate(".subroutine_short_routine$c")) unsigned char subroutine_short_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_short_routine$a"), noinline, used)) short subroutine_short_start_marker() { return 0xFFFF; }
+            __attribute__((section(".subroutine_short_routine$b"), noinline, used)) void subroutine_short_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_short(lua_State* L) {
+        short value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_short_start_marker, (uintptr_t)&subroutine_short_end_marker, size);
+        for (size_t i = 0; i+1 < size; i++) {
+            if (ptr[i + 1] == 0xFF && ptr[i] == 0xFF) {
+                *reinterpret_cast<short*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // unsigned short
+    #pragma section(".subroutine_ushort_routine$a", read, execute)
+    #pragma section(".subroutine_ushort_routine$b", read, execute)
+    #pragma section(".subroutine_ushort_routine$c", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(allocate(".subroutine_ushort_routine$a")) unsigned char subroutine_ushort_start_marker = 0;
+            __declspec(code_seg(".subroutine_ushort_routine$b"), noinline) unsigned short subroutine_ushort_routine() { return 0xFFFF; }
+            __declspec(allocate(".subroutine_ushort_routine$c")) unsigned char subroutine_ushort_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_ushort_routine$a"), noinline, used)) unsigned short subroutine_ushort_start_marker() { return 0xFFFF; }
+            __attribute__((section(".subroutine_ushort_routine$b"), noinline, used)) void subroutine_ushort_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_ushort(lua_State* L) {
+        unsigned short value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_ushort_start_marker, (uintptr_t)&subroutine_ushort_end_marker, size);
+        for (size_t i = 0; i + 1 < size; i++) {
+            if (ptr[i + 1] == 0xFF && ptr[i] == 0xFF) {
+                *reinterpret_cast<unsigned short*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // int
+    #pragma section(".subroutine_int_routine$a", read, execute)
+    #pragma section(".subroutine_int_routine$b", read, execute)
+    #pragma section(".subroutine_int_routine$c", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(allocate(".subroutine_int_routine$a")) unsigned char subroutine_int_start_marker = 0;
+            __declspec(code_seg(".subroutine_int_routine$b"), noinline) int subroutine_int_routine() { return 0xA1B2C3D4; }
+            __declspec(allocate(".subroutine_int_routine$c")) unsigned char subroutine_int_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_int_routine$a"), noinline, used)) int subroutine_int_start_marker() { return 0xA1B2C3D4; }
+            __attribute__((section(".subroutine_int_routine$b"), noinline, used)) void subroutine_int_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_int(lua_State* L) {
+        int value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_int_start_marker, (uintptr_t)&subroutine_int_end_marker, size);
+        for (size_t i = 0; i + 3 < size; i++) {
+            if (ptr[i + 3] == 0xA1 && ptr[i + 2] == 0xB2 && ptr[i + 1] == 0xC3 && ptr[i] == 0xD4) {
+                *reinterpret_cast<int*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // unsigned int
+    #pragma section(".subroutine_uint_routine$a", read, execute)
+    #pragma section(".subroutine_uint_routine$b", read, execute)
+    #pragma section(".subroutine_uint_routine$c", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(allocate(".subroutine_uint_routine$a")) unsigned char subroutine_uint_start_marker = 0;
+            __declspec(code_seg(".subroutine_uint_routine$b"), noinline) unsigned int subroutine_uint_routine() { return 0xA1B2C3D4; }
+            __declspec(allocate(".subroutine_uint_routine$c")) unsigned char subroutine_uint_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_uint_routine$a"), noinline, used)) unsigned int subroutine_uint_start_marker() { return 0xA1B2C3D4; }
+            __attribute__((section(".subroutine_uint_routine$b"), noinline, used)) void subroutine_uint_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_uint(lua_State* L) {
+        unsigned int value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_uint_start_marker, (uintptr_t)&subroutine_uint_end_marker, size);
+        for (size_t i = 0; i + 3 < size; i++) {
+            if (ptr[i + 3] == 0xA1 && ptr[i + 2] == 0xB2 && ptr[i + 1] == 0xC3 && ptr[i] == 0xD4) {
+                *reinterpret_cast<unsigned int*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // long
+    #pragma section(".subroutine_long_routine$a", read, execute)
+    #pragma section(".subroutine_long_routine$b", read, execute)
+    #pragma section(".subroutine_long_routine$c", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(allocate(".subroutine_long_routine$a")) unsigned char subroutine_long_start_marker = 0;
+            __declspec(code_seg(".subroutine_long_routine$b"), noinline) long subroutine_long_routine() { return 0xA1B2C3D4; }
+            __declspec(allocate(".subroutine_long_routine$c")) unsigned char subroutine_long_end_marker = 0;
+        #else
+            #if defined(__x86_64__) || defined(_M_X64)
+                __attribute__((section(".subroutine_long_routine$a"), noinline, used)) long subroutine_long_start_marker() { return 0xA1B2C3D4E5F6; }
+            #else
+                __attribute__((section(".subroutine_long_routine$a"), noinline, used)) long subroutine_long_start_marker() { return 0xA1B2C3D4; }
+            #endif
+            __attribute__((section(".subroutine_long_routine$b"), noinline, used)) void subroutine_long_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_long(lua_State* L) {
+        long value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_long_start_marker, (uintptr_t)&subroutine_long_end_marker, size);
+        #if (defined(__x86_64__) || defined(_M_X64)) && !defined(_WIN32)
+            for (size_t i = 0; i + 5 < size; i++) {
+                if (ptr[i + 5] == 0xA1 && ptr[i + 4] == 0xB2 && ptr[i + 3] == 0xC3 && ptr[i + 2] == 0xD4 && ptr[i + 1] == 0xE5 && ptr[i] == 0xF6) {
+                    *reinterpret_cast<long*>(ptr + i) = value;
+                    break;
+                }
+            }
+        #else
+            for (size_t i = 0; i + 3 < size; i++) {
+                if (ptr[i + 3] == 0xA1 && ptr[i + 2] == 0xB2 && ptr[i + 1] == 0xC3 && ptr[i] == 0xD4) {
+                    *reinterpret_cast<long*>(ptr + i) = value;
+                    break;
+                }
+            }
+        #endif
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // unsigned long
+    #pragma section(".subroutine_ulong_routine$a", read, execute)
+    #pragma section(".subroutine_ulong_routine$b", read, execute)
+    #pragma section(".subroutine_ulong_routine$c", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(allocate(".subroutine_ulong_routine$a")) unsigned char subroutine_ulong_start_marker = 0;
+            __declspec(code_seg(".subroutine_ulong_routine$b"), noinline) unsigned long subroutine_ulong_routine() { return 0xA1B2C3D4; }
+            __declspec(allocate(".subroutine_ulong_routine$c")) unsigned char subroutine_ulong_end_marker = 0;
+        #else
+            #if defined(__x86_64__) || defined(_M_X64)
+                __attribute__((section(".subroutine_ulong_routine$a"), noinline, used)) unsigned long subroutine_ulong_start_marker() { return 0xA1B2C3D4E5F6; }
+            #else
+                __attribute__((section(".subroutine_ulong_routine$a"), noinline, used)) unsigned long subroutine_ulong_start_marker() { return 0xA1B2C3D4; }
+            #endif
+            __attribute__((section(".subroutine_ulong_routine$b"), noinline, used)) void subroutine_ulong_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_ulong(lua_State* L) {
+        unsigned long value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_ulong_start_marker, (uintptr_t)&subroutine_ulong_end_marker, size);
+        #if (defined(__x86_64__) || defined(_M_X64)) && !defined(_WIN32)
+            for (size_t i = 0; i + 5 < size; i++) {
+                if (ptr[i + 5] == 0xA1 && ptr[i + 4] == 0xB2 && ptr[i + 3] == 0xC3 && ptr[i + 2] == 0xD4 && ptr[i + 1] == 0xE5 && ptr[i] == 0xF6) {
+                    *reinterpret_cast<long*>(ptr + i) = value;
+                    break;
+                }
+            }
+        #else
+            for (size_t i = 0; i + 3 < size; i++) {
+                if (ptr[i + 3] == 0xA1 && ptr[i + 2] == 0xB2 && ptr[i + 1] == 0xC3 && ptr[i] == 0xD4) {
+                    *reinterpret_cast<long*>(ptr + i) = value;
+                    break;
+                }
+            }
+        #endif
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    int subroutine_sequence(lua_State* L) {
+        std::string hex_string = luaL::checkcstring(L, 1);
+
+        std::string filtered;
+        for (char ch : std::string(hex_string)) {
+            if (!std::isspace(static_cast<unsigned char>(ch))) {
+                filtered += ch;
+            }
+        }
+
+        if (filtered.size() % 2 != 0) {
+            return luaL::error(L, "invalid hex string: odd number of digits");
+        }
+
+        for (char ch : filtered) {
+            if (!std::isxdigit(static_cast<unsigned char>(ch))) {
+                return luaL::error(L, "invalid hex string: '%s'", filtered.c_str());
+            }
+        }
+
+        size_t size = sizeof(unsigned char) * filtered.size() / 2;
+        unsigned char* address = (unsigned char*)malloc(size);
+
+        if (!address) {
+            return luaL::error(L, "out of memory");
+        }
+
+        #if defined(__linux__)
+            uintptr_t page_size = sysconf(_SC_PAGESIZE);
+            uintptr_t page_start = (uintptr_t)address & ~(page_size - 1);
+
+            int current_prot;
+            if (!get_page_permissions(address, current_prot)) {
+                return luaL::error(L, "failed to assign execution permissions");
+            };
+
+            current_prot |= PROT_EXEC;
+            current_prot |= PROT_READ;
+            current_prot |= PROT_WRITE;
+
+            if (mprotect((void*)page_start, page_size, current_prot) != 0) {
+                return luaL::error(L, "failed to assign execution permissions");
+            }
+        #elif defined(_WIN32)
+            DWORD oldProt;
+            if (!VirtualProtect(address, size, PAGE_EXECUTE_READWRITE, &oldProt)) {
+                return luaL::error(L, "failed to assign execution permissions");
+            }
+        #endif
+
+        for (unsigned int i = 0; i < (filtered.size() / 2); ++i) {
+            std::string byte_str = filtered.substr(i * 2, 2);
+            unsigned char byte_val = static_cast<unsigned char>(std::stoul(byte_str, nullptr, 16));
+            address[i] = byte_val;
+        }
+
+        push_address(L, address);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    typedef void (*pushref__)(lua_State*, int);
+    typedef int (*pcall__)(lua_State*, int, int, int);
+    BEGIN_NOOPT // invoker
+    #pragma section(".subroutine_invoker_routine$a", read, execute)
+    #pragma section(".subroutine_invoker_routine$b", read, execute)
+    #pragma section(".subroutine_invoker_routine$c", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(allocate(".subroutine_invoker_routine$a")) unsigned char subroutine_invoker_start_marker = 0;
+            __declspec(code_seg(".subroutine_invoker_routine$b"), noinline) void subroutine_invoker_routine() {
+                int function_id = 0xA1B2C3D4;
+                #if defined(__x86_64__) || defined(_M_X64)
+                    uintptr_t lua_state = 0x1AA1B2C3D4E5F6;
+                    uintptr_t pushref = 0x2AA1B2C3D4E5F6;
+                    uintptr_t pcall = 0x3AA1B2C3D4E5F6;
+                #else
+                    uintptr_t lua_state = 0x1AA1B2C3;
+                    uintptr_t pushref = 0x2AA1B2C3;
+                    uintptr_t pcall = 0x3AA1B2C3;
+                #endif
+                ((pushref__)pushref)((lua_State*)lua_state, function_id);
+                ((pcall__)pcall)((lua_State*)lua_state, 0, 0, 0);
+            }
+            __declspec(allocate(".subroutine_invoker_routine$c")) unsigned char subroutine_invoker_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_invoker_routine$a"), noinline, used)) char subroutine_invoker_start_marker() {
+                int function_id = 0xA1B2C3D4;
+                #if defined(__x86_64__) || defined(_M_X64)
+                    uintptr_t lua_state = 0x1AA1B2C3D4E5F6;
+                    uintptr_t pushref = 0x2AA1B2C3D4E5F6;
+                    uintptr_t pcall = 0x3AA1B2C3D4E5F6;
+                #else
+                    uintptr_t lua_state = 0x1AA1B2C3;
+                    uintptr_t pushref = 0x2AA1B2C3;
+                    uintptr_t pcall = 0x3AA1B2C3;
+                #endif
+                ((pushref__)pushref)((lua_State*)lua_state, function_id);
+                ((pcall__)pcall)((lua_State*)lua_state, 0, 0, 0);
+            }
+            __attribute__((section(".subroutine_invoker_routine$b"), noinline, used)) void subroutine_invoker_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_invoker(lua_State* L) {
+        luaL::checklfunction(L, 1);
+        int id = luaL::newref(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_invoker_start_marker, (uintptr_t)&subroutine_invoker_end_marker, size);
+
+        #if defined(__x86_64__) || defined(_M_X64)
+            for (size_t i = 0; i + 3 < size; i++) {
+                if (ptr[i + 3] == 0xA1 && ptr[i + 2] == 0xB2 && ptr[i + 1] == 0xC3 && ptr[i] == 0xD4) {
+                    *reinterpret_cast<int*>(ptr + i) = id;
+                    break;
+                }
+            }
+            for (size_t i = 0; i + 7 < size; i++) {
+                if (ptr[i + 7] == 0x00 && ptr[i + 6] == 0x1A && ptr[i + 5] == 0xA1 && ptr[i + 4] == 0xB2 && ptr[i + 3] == 0xC3 && ptr[i + 2] == 0xD4 && ptr[i + 1] == 0xE5 && ptr[i] == 0xF6) {
+                    *reinterpret_cast<uintptr_t*>(ptr + i) = (uintptr_t)L;
+                    break;
+                }
+            }
+            for (size_t i = 0; i + 7 < size; i++) {
+                if (ptr[i + 7] == 0x00 && ptr[i + 6] == 0x2A && ptr[i + 5] == 0xA1 && ptr[i + 4] == 0xB2 && ptr[i + 3] == 0xC3 && ptr[i + 2] == 0xD4 && ptr[i + 1] == 0xE5 && ptr[i] == 0xF6) {
+                    *reinterpret_cast<uintptr_t*>(ptr + i) = (uintptr_t)lua::pushref;
+                    break;
+                }
+            }
+            for (size_t i = 0; i + 7 < size; i++) {
+                if (ptr[i + 7] == 0x00 && ptr[i + 6] == 0x3A && ptr[i + 5] == 0xA1 && ptr[i + 4] == 0xB2 && ptr[i + 3] == 0xC3 && ptr[i + 2] == 0xD4 && ptr[i + 1] == 0xE5 && ptr[i] == 0xF6) {
+                    *reinterpret_cast<uintptr_t*>(ptr + i) = (uintptr_t)lua::pcall;
+                    break;
+                }
+            }
+        #else
+            for (size_t i = 0; i + 3 < size; i++) {
+                if (ptr[i + 3] == 0xA1 && ptr[i + 2] == 0xB2 && ptr[i + 1] == 0xC3 && ptr[i] == 0xD4) {
+                    *reinterpret_cast<int*>(ptr + i) = id;
+                    break;
+                }
+            }
+            for (size_t i = 0; i + 3 < size; i++) {
+                if (ptr[i + 3] == 0x1A && ptr[i + 2] == 0xA1 && ptr[i + 1] == 0xB2 && ptr[i] == 0xC3) {
+                    *reinterpret_cast<uintptr_t*>(ptr + i) = (uintptr_t)L;
+                    break;
+                }
+            }
+            for (size_t i = 0; i + 3 < size; i++) {
+                if (ptr[i + 3] == 0x2A && ptr[i + 2] == 0xA1 && ptr[i + 1] == 0xB2 && ptr[i] == 0xC3) {
+                    *reinterpret_cast<uintptr_t*>(ptr + i) = (uintptr_t)lua::pushref;
+                    break;
+                }
+            }
+            for (size_t i = 0; i + 3 < size; i++) {
+                if (ptr[i + 3] == 0x3A && ptr[i + 2] == 0xA1 && ptr[i + 1] == 0xB2 && ptr[i] == 0xC3) {
+                    *reinterpret_cast<uintptr_t*>(ptr + i) = (uintptr_t)lua::pcall;
+                    break;
+                }
+            }
+        #endif
+
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    typedef void*(*blnk)();
+    int subroutine_emit(lua_State* L) {
+        #if !(defined(__x86_64__) || defined(_M_X64)) && !(defined(__i386__) || defined(_M_IX86))
+        return luaL::error(L, "unsupported architecture.");
+        #else
+        blnk address = (blnk)Class::check(L, 1, "address");
+        void* data = address();
+        push_address(L, data);
+        return 1;
+        #endif
+    }
+
+    std::unordered_map<uintptr_t, std::vector<char>>& jump_restoration_() {
+        static std::unordered_map<uintptr_t, std::vector<char>> jump_restoration = std::unordered_map<uintptr_t, std::vector<char>>();
+        return jump_restoration;
+    }
+
+    std::unordered_map<uintptr_t, uintptr_t>& jump_mapping_() {
+        static std::unordered_map<uintptr_t, uintptr_t> jump_mapping = std::unordered_map<uintptr_t, uintptr_t>();
+        return jump_mapping;
+    }
+
+    int jump_hook(lua_State* L) {
+        char* loc = (char*)Class::check(L, 1, "address");
+        char* target = (char*)Class::check(L, 2, "address");
+
+        if (jump_mapping_().find((uintptr_t)loc) != jump_mapping_().end()) {
+            lua::pushboolean(L, false);
+            return 1;
+        }
+
+        #if defined(__x86_64__) || defined(_M_X64)
+            // SIZE: 12
+            // mov rax, imm64 -> 48 B8 XX XX XX XX XX XX XX XX
+            // jmp rax -> FF E0
+            char* buffer = loc;
+            std::vector<char> storage;
+            for (unsigned int i = 0; i < 12; ++i) {
+                storage.push_back(buffer[i]);
+            }
+            buffer[0] = 0x48; buffer[1] = 0xB8;
+            *(void**)(buffer + 2) = target;
+            buffer[10] = 0xFF; buffer[11] = 0xE0;
+
+            jump_restoration_()[(uintptr_t)loc] = storage;
+            jump_mapping_()[(uintptr_t)loc] = (uintptr_t)target;
+        #elif defined(__i386__) || defined(_M_IX86)
+            // SIZE: 5
+            // jmp -> E9 XX XX XX XX (offset from PC)
+            char* buffer = (char*)loc;
+            std::vector<char> storage;
+            for (unsigned int i = 0; i < 5; ++i) {
+                storage.push_back(buffer[i]);
+            }
+            buffer[0] = 0xE9;
+            intptr_t relative = (intptr_t)(target) - ((intptr_t)buffer + 5);
+            *(int32_t*)(buffer + 1) = (int32_t)relative;
+
+            jump_restoration_()[(uintptr_t)loc] = storage;
+            jump_mapping_()[(uintptr_t)loc] = (uintptr_t)target;
+        #else
+            luaL::error(L, "unsupported architecture.");
+        #endif
+
+        lua::pushboolean(L, true);
+        return 1;
+    }
+
+    int jump_unhook(lua_State* L) {
+        char* loc = (char*)Class::check(L, 1, "address");
+
+        if (jump_mapping_().find((uintptr_t)loc) == jump_mapping_().end()) {
+            lua::pushboolean(L, false);
+            return 1;
+        }
+
+        std::vector<char> storage = jump_restoration_()[(uintptr_t)loc];
+
+        for (size_t i = 0; i < storage.size(); ++i) {
+            ((char*)loc)[i] = storage[i];
+        }
+
+        jump_mapping_().erase((uintptr_t)loc);
+        jump_restoration_().erase((uintptr_t)loc);
+
+        lua::pushboolean(L, true);
+        return 1;
+    }
+
+    int jump_list(lua_State* L) {
+        lua::newtable(L);
+
+        int i = 0;
+        for (auto& entry : jump_mapping_()) {
+            uintptr_t loc = entry.first;
+            uintptr_t target = entry.second;
+
+            lua::pushnumber(L, ++i);
+            push_address(L, (void*)loc);
+            lua::settable(L, -3);
+
+            push_address(L, (void*)loc);
+            push_address(L, (void*)target);
+            lua::settable(L, -3);
+        }
+
+        return 1;
+    }
+
+    int jump_get(lua_State* L) {
+        char* loc = (char*)Class::check(L, 1, "address");
+
+        if (jump_mapping_().find((uintptr_t)loc) == jump_mapping_().end()) {
+            lua::pushboolean(L, false);
+            return 1;
+        }
+
+        push_address(L, (void*)jump_mapping_()[(uintptr_t)loc]);
+        return 1;
+    }
     
     void runtime()
     {
@@ -1896,11 +2641,14 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         lua::pushcfunction(L, modules);
         lua::setfield(L, -2, "modules");
 
+        lua::pushcfunction(L, module);
+        lua::setfield(L, -2, "module");
+
         lua::pushcfunction(L, regions);
         lua::setfield(L, -2, "regions");
 
-        lua::pushcfunction(L, module);
-        lua::setfield(L, -2, "module");
+        lua::pushcfunction(L, region);
+        lua::setfield(L, -2, "region");
 
         lua::pushcfunction(L, base);
         lua::setfield(L, -2, "base");
@@ -2058,6 +2806,65 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         lua::setfield(L, -2, "address");
 
         lua::setfield(L, -2, "write");
+
+        lua::newtable(L);
+
+        lua::pushcfunction(L, subroutine_blank);
+        lua::setfield(L, -2, "blank");
+
+        lua::pushcfunction(L, subroutine_bool);
+        lua::setfield(L, -2, "bool");
+
+        lua::pushcfunction(L, subroutine_char);
+        lua::setfield(L, -2, "char");
+
+        lua::pushcfunction(L, subroutine_uchar);
+        lua::setfield(L, -2, "uchar");
+
+        lua::pushcfunction(L, subroutine_short);
+        lua::setfield(L, -2, "short");
+
+        lua::pushcfunction(L, subroutine_ushort);
+        lua::setfield(L, -2, "ushort");
+
+        lua::pushcfunction(L, subroutine_int);
+        lua::setfield(L, -2, "int");
+
+        lua::pushcfunction(L, subroutine_uint);
+        lua::setfield(L, -2, "uint");
+
+        lua::pushcfunction(L, subroutine_long);
+        lua::setfield(L, -2, "long");
+
+        lua::pushcfunction(L, subroutine_ulong);
+        lua::setfield(L, -2, "ulong");
+
+        lua::pushcfunction(L, subroutine_sequence);
+        lua::setfield(L, -2, "sequence");
+
+        lua::pushcfunction(L, subroutine_invoker);
+        lua::setfield(L, -2, "invoker");
+
+        lua::pushcfunction(L, subroutine_emit);
+        lua::setfield(L, -2, "emit");
+
+        lua::setfield(L, -2, "subroutine");
+
+        lua::newtable(L);
+
+        lua::pushcfunction(L, jump_hook);
+        lua::setfield(L, -2, "hook");
+
+        lua::pushcfunction(L, jump_unhook);
+        lua::setfield(L, -2, "unhook");
+
+        lua::pushcfunction(L, jump_list);
+        lua::setfield(L, -2, "list");
+
+        lua::pushcfunction(L, jump_get);
+        lua::setfield(L, -2, "get");
+
+        lua::setfield(L, -2, "jump");
     }
 
     void api()
