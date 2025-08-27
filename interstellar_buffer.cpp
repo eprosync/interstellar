@@ -1027,16 +1027,23 @@ namespace INTERSTELLAR_NAMESPACE::Buffer {
     {
         std::string hex_string = luaL::checkcstring(L, 1);
 
-        if (hex_string.size() % 2 != 0) {
+        std::string filtered;
+        for (char c : hex_string) {
+            if (!std::isspace(static_cast<unsigned char>(c))) {
+                filtered.push_back(c);
+            }
+        }
+
+        if (filtered.size() % 2 != 0) {
+            luaL::error(L, "invalid hex string, odd number of digits");
             return 0;
         }
 
         std::vector<std::byte> bytes;
-        for (size_t i = 0; i < hex_string.size(); i += 2) {
-            std::byte byte = std::byte(
-                (std::stoi(hex_string.substr(i, 1), nullptr, 16) << 4) |
-                std::stoi(hex_string.substr(i + 1, 1), nullptr, 16));
-            bytes.push_back(byte);
+        for (size_t i = 0; i < filtered.size(); i += 2) {
+            int high = std::stoi(filtered.substr(i, 1), nullptr, 16);
+            int low = std::stoi(filtered.substr(i + 1, 1), nullptr, 16);
+            bytes.push_back(std::byte((high << 4) | low));
         }
 
         push_buffer(L, bytes);

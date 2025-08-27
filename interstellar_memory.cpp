@@ -532,6 +532,12 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         return 1;
     }
 
+    int allocate(lua_State* L) {
+        size_t size = luaL::checknumber(L, 1);
+        push_address(L, malloc(size));
+        return 1;
+    }
+
     int modules(lua_State* L) {
         lua::newtable(L);
 
@@ -1800,28 +1806,26 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     int write_sequence(lua_State* L) {
         char* address = (char*)Class::check(L, 1, "address");
         std::string hex_string = luaL::checkcstring(L, 2);
-        unsigned int size = luaL::checknumber(L, 3);
 
-        if (!is_valid_write(address, sizeof(unsigned char) * size)) {
-            return luaL::error(L, "invalid write access at address %p", address);
-        }
-
-        std::string hex_string_no_spaces;
+        std::string filtered;
         for (char ch : std::string(hex_string)) {
             if (!std::isspace(static_cast<unsigned char>(ch))) {
-                hex_string_no_spaces += ch;
+                filtered += ch;
             }
         }
 
-        if (hex_string_no_spaces.length() != static_cast<size_t>(size * 2)) {
-            return luaL::error(L, "expected %u characters, got %zu", size * 2, hex_string_no_spaces.length());
+        if (filtered.size() % 2 != 0) {
+            return luaL::error(L, "invalid hex string: odd number of digits");
         }
 
-
-        for (char ch : hex_string_no_spaces) {
-            if (!std::isspace(static_cast<unsigned char>(ch)) && !std::isxdigit(static_cast<unsigned char>(ch))) {
-                return luaL::error(L, "invalid hex string: '%s'", hex_string_no_spaces.c_str());
+        for (char ch : filtered) {
+            if (!std::isxdigit(static_cast<unsigned char>(ch))) {
+                return luaL::error(L, "invalid hex string: '%s'", filtered.c_str());
             }
+        }
+
+        if (!is_valid_write(address, sizeof(unsigned char) * (filtered.size() / 2))) {
+            return luaL::error(L, "invalid write access at address %p", address);
         }
 
         bool writeable = is_writable(address);
@@ -1832,8 +1836,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             }
         }
 
-        for (unsigned int i = 0; i < size; ++i) {
-            std::string byte_str = hex_string_no_spaces.substr(i * 2, 2);
+        for (unsigned int i = 0; i < (filtered.size() / 2); ++i) {
+            std::string byte_str = filtered.substr(i * 2, 2);
             unsigned char byte_val = static_cast<unsigned char>(std::stoul(byte_str, nullptr, 16));
             address[i] = byte_val;
         }
@@ -1886,6 +1890,9 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         lua::pushcfunction(L, address);
         lua::setfield(L, -2, "address");
 
+        lua::pushcfunction(L, allocate);
+        lua::setfield(L, -2, "allocate");
+
         lua::pushcfunction(L, modules);
         lua::setfield(L, -2, "modules");
 
@@ -1910,6 +1917,12 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         lua::pushcfunction(L, _interface);
         lua::setfield(L, -2, "interface");
 
+        lua::pushcfunction(L, offset);
+        lua::setfield(L, -2, "offset");
+
+        lua::pushcfunction(L, relative);
+        lua::setfield(L, -2, "relative");
+
         lua::newtable(L);
 
         lua::pushcfunction(L, aob_ida);
@@ -1919,12 +1932,6 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         lua::setfield(L, -2, "hex");
 
         lua::setfield(L, -2, "aob");
-
-        lua::pushcfunction(L, offset);
-        lua::setfield(L, -2, "offset");
-
-        lua::pushcfunction(L, relative);
-        lua::setfield(L, -2, "relative");
 
         lua::newtable(L);
 
