@@ -7,4 +7,5 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     extern void runtime();
     extern void push(API::lua_State* L, UMODULE hndle);
     extern void api();
+    extern void push_address(API::lua_State* L, void* addr);
 }

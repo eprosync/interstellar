@@ -1459,6 +1459,9 @@ namespace INTERSTELLAR_NAMESPACE {
             uintptr_t id = (uintptr_t)L;
 
             if (name.size() > 0) {
+                Reflection::push(L);
+                lua::pop(L);
+
                 state_tracking* tracker = new state_tracking();
                 tracker->threaded = false;
                 tracker->internal = internal;
@@ -1517,6 +1520,9 @@ namespace INTERSTELLAR_NAMESPACE {
             uintptr_t id = (uintptr_t)L;
 
             if (name.size() > 0) {
+                Reflection::push(L);
+                lua::pop(L);
+
                 state_tracking* tracker = new state_tracking();
                 tracker->threaded = true;
                 tracker->internal = internal;
@@ -2275,9 +2281,6 @@ namespace INTERSTELLAR_NAMESPACE {
                 return std::string(error, size);
             }
 
-            push(L);
-            lua::setfenv(L, -2);
-
             return "";
         }
 
@@ -2289,9 +2292,6 @@ namespace INTERSTELLAR_NAMESPACE {
                 lua::pop(L);
                 return std::string(error, size);
             }
-
-            push(L);
-            lua::setfenv(L, -2);
 
             if (lua::tcall(L, 0, 0) != 0) {
                 size_t size = 0;
