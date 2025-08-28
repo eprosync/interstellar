@@ -2548,6 +2548,15 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             return 1;
         }
 
+        bool writeable = is_writable(loc);
+
+        if (!writeable) {
+            if (!make_writeable(loc, true)) {
+                lua::pushboolean(L, false);
+                return 1;
+            }
+        }
+
         #if defined(__x86_64__) || defined(_M_X64)
             // SIZE: 12
             // mov rax, imm64 -> 48 B8 XX XX XX XX XX XX XX XX
@@ -2581,6 +2590,10 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             luaL::error(L, "unsupported architecture.");
         #endif
 
+        if (writeable) {
+            make_writeable(loc, false);
+        }
+
         lua::pushboolean(L, true);
         return 1;
     }
@@ -2595,8 +2608,21 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
         std::vector<char> storage = jump_restoration_()[(uintptr_t)loc];
 
+        bool writeable = is_writable(loc);
+
+        if (!writeable) {
+            if (!make_writeable(loc, true)) {
+                lua::pushboolean(L, false);
+                return 1;
+            }
+        }
+
         for (size_t i = 0; i < storage.size(); ++i) {
             ((char*)loc)[i] = storage[i];
+        }
+
+        if (writeable) {
+            make_writeable(loc, false);
         }
 
         jump_mapping_().erase((uintptr_t)loc);
