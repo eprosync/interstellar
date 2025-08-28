@@ -2039,8 +2039,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             __declspec(code_seg(".subroutine_blank_routine$a"), noinline) static void subroutine_blank_start_marker() {}
             __declspec(allocate(".subroutine_blank_routine$b")) static unsigned char subroutine_blank_end_marker = 0;
         #else
-            __attribute__((section(".subroutine_blank_routine$a"), noinline, used)) static void subroutine_blank_start_marker() {}
-            __attribute__((section(".subroutine_blank_routine$b"), noinline, used)) static void subroutine_blank_end_marker() {}
+            __attribute__((section(".subroutine_blank_routine$a"), noinline, used)) void subroutine_blank_start_marker() {}
+            __attribute__((section(".subroutine_blank_routine$b"), noinline, used)) void subroutine_blank_end_marker() {}
         #endif
     }
     END_NOOPT
@@ -2060,8 +2060,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             __declspec(code_seg(".subroutine_bool_routine$a"), noinline) static bool subroutine_bool_start_marker() { return true; }
             __declspec(allocate(".subroutine_bool_routine$b")) static unsigned char subroutine_bool_end_marker = 0;
         #else
-            __attribute__((section(".subroutine_bool_routine$a"), noinline, used)) static bool subroutine_bool_start_marker() { return true; }
-            __attribute__((section(".subroutine_bool_routine$b"), noinline, used)) static void subroutine_bool_end_marker() {}
+            __attribute__((section(".subroutine_bool_routine$a"), noinline, used)) bool subroutine_bool_start_marker() { return true; }
+            __attribute__((section(".subroutine_bool_routine$b"), noinline, used)) void subroutine_bool_end_marker() {}
         #endif
     }
     END_NOOPT
@@ -2088,8 +2088,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             __declspec(code_seg(".subroutine_char_routine$a"), noinline) static char subroutine_char_start_marker() { return 0xFF; }
             __declspec(allocate(".subroutine_char_routine$b")) static unsigned char subroutine_char_end_marker = 0;
         #else
-            __attribute__((section(".subroutine_char_routine$a"), noinline, used)) static char subroutine_char_start_marker() { return 0xFF; }
-            __attribute__((section(".subroutine_char_routine$b"), noinline, used)) static void subroutine_char_end_marker() {}
+            __attribute__((section(".subroutine_char_routine$a"), noinline, used)) char subroutine_char_start_marker() { return 0xFF; }
+            __attribute__((section(".subroutine_char_routine$b"), noinline, used)) void subroutine_char_end_marker() {}
         #endif
     }
     END_NOOPT
@@ -2116,8 +2116,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             __declspec(code_seg(".subroutine_uchar_routine$a"), noinline) static unsigned char subroutine_uchar_start_marker() { return 0xFF; }
             __declspec(allocate(".subroutine_uchar_routine$b")) static unsigned char subroutine_uchar_end_marker = 0;
         #else
-            __attribute__((section(".subroutine_uchar_routine$a"), noinline, used)) static unsigned char subroutine_uchar_start_marker() { return 0xFF; }
-            __attribute__((section(".subroutine_uchar_routine$b"), noinline, used)) static void subroutine_uchar_end_marker() {}
+            __attribute__((section(".subroutine_uchar_routine$a"), noinline, used)) unsigned char subroutine_uchar_start_marker() { return 0xFF; }
+            __attribute__((section(".subroutine_uchar_routine$b"), noinline, used)) void subroutine_uchar_end_marker() {}
         #endif
     }
     END_NOOPT
@@ -2144,8 +2144,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             __declspec(code_seg(".subroutine_short_routine$a"), noinline) static short subroutine_short_start_marker() { return 0xFFFF; }
             __declspec(allocate(".subroutine_short_routine$b")) static unsigned char subroutine_short_end_marker = 0;
         #else
-            __attribute__((section(".subroutine_short_routine$a"), noinline, used)) static short subroutine_short_start_marker() { return 0xFFFF; }
-            __attribute__((section(".subroutine_short_routine$b"), noinline, used)) static void subroutine_short_end_marker() {}
+            __attribute__((section(".subroutine_short_routine$a"), noinline, used)) short subroutine_short_start_marker() { return 0xFFFF; }
+            __attribute__((section(".subroutine_short_routine$b"), noinline, used)) void subroutine_short_end_marker() {}
         #endif
     }
     END_NOOPT
@@ -2172,8 +2172,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             __declspec(code_seg(".subroutine_ushort_routine$a"), noinline) static unsigned short subroutine_ushort_start_marker() { return 0xFFFF; }
             __declspec(allocate(".subroutine_ushort_routine$b")) static unsigned char subroutine_ushort_end_marker = 0;
         #else
-            __attribute__((section(".subroutine_ushort_routine$a"), noinline, used)) static unsigned short subroutine_ushort_start_marker() { return 0xFFFF; }
-            __attribute__((section(".subroutine_ushort_routine$b"), noinline, used)) static void subroutine_ushort_end_marker() {}
+            __attribute__((section(".subroutine_ushort_routine$a"), noinline, used)) unsigned short subroutine_ushort_start_marker() { return 0xFFFF; }
+            __attribute__((section(".subroutine_ushort_routine$b"), noinline, used)) void subroutine_ushort_end_marker() {}
         #endif
     }
     END_NOOPT
@@ -2200,8 +2200,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             __declspec(code_seg(".subroutine_int_routine$a"), noinline) static int subroutine_int_start_marker() { return 0xA1B2C3D4; }
             __declspec(allocate(".subroutine_int_routine$b")) static unsigned char subroutine_int_end_marker = 0;
         #else
-            __attribute__((section(".subroutine_int_routine$a"), noinline, used)) static int subroutine_int_start_marker() { return 0xA1B2C3D4; }
-            __attribute__((section(".subroutine_int_routine$b"), noinline, used)) static void subroutine_int_end_marker() {}
+            __attribute__((section(".subroutine_int_routine$a"), noinline, used)) int subroutine_int_start_marker() { return 0xA1B2C3D4; }
+            __attribute__((section(".subroutine_int_routine$b"), noinline, used)) void subroutine_int_end_marker() {}
         #endif
     }
     END_NOOPT
@@ -2228,8 +2228,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             __declspec(code_seg(".subroutine_uint_routine$a"), noinline) static unsigned int subroutine_uint_start_marker() { return 0xA1B2C3D4; }
             __declspec(allocate(".subroutine_uint_routine$b")) static unsigned char subroutine_uint_end_marker = 0;
         #else
-            __attribute__((section(".subroutine_uint_routine$a"), noinline, used)) static unsigned int subroutine_uint_start_marker() { return 0xA1B2C3D4; }
-            __attribute__((section(".subroutine_uint_routine$b"), noinline, used)) static void subroutine_uint_end_marker() {}
+            __attribute__((section(".subroutine_uint_routine$a"), noinline, used)) unsigned int subroutine_uint_start_marker() { return 0xA1B2C3D4; }
+            __attribute__((section(".subroutine_uint_routine$b"), noinline, used)) void subroutine_uint_end_marker() {}
         #endif
     }
     END_NOOPT
@@ -2257,11 +2257,11 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             __declspec(allocate(".subroutine_long_routine$b")) static unsigned char subroutine_long_end_marker = 0;
         #else
             #if defined(__x86_64__) || defined(_M_X64)
-                __attribute__((section(".subroutine_long_routine$a"), noinline, used)) static long subroutine_long_start_marker() { return 0xA1B2C3D4E5F6; }
+                __attribute__((section(".subroutine_long_routine$a"), noinline, used)) long subroutine_long_start_marker() { return 0xA1B2C3D4E5F6; }
             #else
-                __attribute__((section(".subroutine_long_routine$a"), noinline, used)) static long subroutine_long_start_marker() { return 0xA1B2C3D4; }
+                __attribute__((section(".subroutine_long_routine$a"), noinline, used)) long subroutine_long_start_marker() { return 0xA1B2C3D4; }
             #endif
-            __attribute__((section(".subroutine_long_routine$b"), noinline, used)) static void subroutine_long_end_marker() {}
+            __attribute__((section(".subroutine_long_routine$b"), noinline, used)) void subroutine_long_end_marker() {}
         #endif
     }
     END_NOOPT
@@ -2298,11 +2298,11 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             __declspec(allocate(".subroutine_ulong_routine$b")) static unsigned char subroutine_ulong_end_marker = 0;
         #else
             #if defined(__x86_64__) || defined(_M_X64)
-                __attribute__((section(".subroutine_ulong_routine$a"), noinline, used)) static unsigned long subroutine_ulong_start_marker() { return 0xA1B2C3D4E5F6; }
+                __attribute__((section(".subroutine_ulong_routine$a"), noinline, used)) unsigned long subroutine_ulong_start_marker() { return 0xA1B2C3D4E5F6; }
             #else
-                __attribute__((section(".subroutine_ulong_routine$a"), noinline, used)) static unsigned long subroutine_ulong_start_marker() { return 0xA1B2C3D4; }
+                __attribute__((section(".subroutine_ulong_routine$a"), noinline, used)) unsigned long subroutine_ulong_start_marker() { return 0xA1B2C3D4; }
             #endif
-            __attribute__((section(".subroutine_ulong_routine$b"), noinline, used)) static void subroutine_ulong_end_marker() {}
+            __attribute__((section(".subroutine_ulong_routine$b"), noinline, used)) void subroutine_ulong_end_marker() {}
         #endif
     }
     END_NOOPT
@@ -2414,7 +2414,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             }
             __declspec(allocate(".subroutine_invoker_routine$b")) static unsigned char subroutine_invoker_end_marker = 0;
         #else
-            __attribute__((section(".subroutine_invoker_routine$a"), noinline, used)) static void subroutine_invoker_start_marker() {
+            __attribute__((section(".subroutine_invoker_routine$a"), noinline, used)) void subroutine_invoker_start_marker() {
                 int function_id = 0xA1B2C3D4;
                 #if defined(__x86_64__) || defined(_M_X64)
                     uintptr_t lua_state = 0x1AA1B2C3D4E5F6;
@@ -2428,7 +2428,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
                 ((pushref__)pushref)((lua_State*)lua_state, function_id);
                 ((pcall__)pcall)((lua_State*)lua_state, 0, 0, 0);
             }
-            __attribute__((section(".subroutine_invoker_routine$b"), noinline, used)) static void subroutine_invoker_end_marker() {}
+            __attribute__((section(".subroutine_invoker_routine$b"), noinline, used)) void subroutine_invoker_end_marker() {}
         #endif
     }
     END_NOOPT
