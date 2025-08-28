@@ -527,7 +527,8 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int address(lua_State* L) {
-        if (lua::isstring(L, 1)) {
+
+        if (lua::istype(L, 1, datatype::string)) {
             std::string addr = luaL::checkcstring(L, 1);
             char* end;
             uintptr_t value = strtoull(addr.c_str(), &end, 16);
@@ -562,8 +563,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             push_address(L, (void*)cdata);
             return 1;
         }
-        uintptr_t addr = luaL::checknumber(L, 1);
-        push_address(L, (void*)addr);
+        push_address(L, (void*)(uintptr_t)luaL::checkinteger(L, 1));
         return 1;
     }
 
