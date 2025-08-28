@@ -2013,6 +2013,21 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         #endif
 
         memcpy(clone, raw + offset_start, actual_size);
+        
+        #if defined(__linux__) && (defined(__i386__) || defined(_M_IX86))
+            // x86 specific: remove stopid PIC thunk E8 ?? ?? ?? ?? 05 ?? ?? ?? ??
+            unsigned char* buffer = (unsigned char*)clone;
+            for (size_t i = 0; i + 9 < actual_size;) {
+                if (buffer[i] == 0xE8 && buffer[i + 5] == 0x05) {
+                    memmove(buffer + i, buffer + i + 10, actual_size - (i + 10));
+                    actual_size -= 10;
+                    break;
+                } else {
+                    i++;
+                }
+            }
+        #endif
+
         return clone;
     }
     
@@ -2421,7 +2436,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             }
             __declspec(allocate(".subroutine_invoker_routine$c")) unsigned char subroutine_invoker_end_marker = 0;
         #else
-            __attribute__((section(".subroutine_invoker_routine$a"), noinline, used)) char subroutine_invoker_start_marker() {
+            __attribute__((section(".subroutine_invoker_routine$a"), noinline, used)) void subroutine_invoker_start_marker() {
                 int function_id = 0xA1B2C3D4;
                 #if defined(__x86_64__) || defined(_M_X64)
                     uintptr_t lua_state = 0x1AA1B2C3D4E5F6;
