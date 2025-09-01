@@ -1395,6 +1395,78 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         }
     }
 
+    int scan_int8(lua_State* L) {
+        int8_t value = luaL::checkinteger(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_uint8(lua_State* L) {
+        uint8_t value = luaL::checkinteger(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_int16(lua_State* L) {
+        int16_t value = luaL::checkinteger(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_uint16(lua_State* L) {
+        uint16_t value = luaL::checkinteger(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_int32(lua_State* L) {
+        int32_t value = luaL::checkinteger(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_uint32(lua_State* L) {
+        uint32_t value = luaL::checkinteger(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_int64(lua_State* L) {
+        int64_t value = luaL::checkinteger(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_uint64(lua_State* L) {
+        uint64_t value = luaL::checkinteger(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
     int scan_bool(lua_State* L) {
         bool value = luaL::checkboolean(L, 1);
         uintptr_t base;
@@ -1405,7 +1477,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int scan_char(lua_State* L) {
-        char value = luaL::checknumber(L, 1);
+        char value = luaL::checkinteger(L, 1);
         uintptr_t base;
         size_t size;
         scan_get_size(L, base, size);
@@ -1414,7 +1486,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int scan_uchar(lua_State* L) {
-        unsigned char value = luaL::checknumber(L, 1);
+        unsigned char value = luaL::checkinteger(L, 1);
         uintptr_t base;
         size_t size;
         scan_get_size(L, base, size);
@@ -1423,7 +1495,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int scan_short(lua_State* L) {
-        short value = luaL::checknumber(L, 1);
+        short value = luaL::checkinteger(L, 1);
         uintptr_t base;
         size_t size;
         scan_get_size(L, base, size);
@@ -1432,7 +1504,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int scan_ushort(lua_State* L) {
-        unsigned short value = luaL::checknumber(L, 1);
+        unsigned short value = luaL::checkinteger(L, 1);
         uintptr_t base;
         size_t size;
         scan_get_size(L, base, size);
@@ -1441,7 +1513,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int scan_int(lua_State* L) {
-        int value = luaL::checknumber(L, 1);
+        int value = luaL::checkinteger(L, 1);
         uintptr_t base;
         size_t size;
         scan_get_size(L, base, size);
@@ -1450,7 +1522,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int scan_uint(lua_State* L) {
-        unsigned int value = luaL::checknumber(L, 1);
+        unsigned int value = luaL::checkinteger(L, 1);
         uintptr_t base;
         size_t size;
         scan_get_size(L, base, size);
@@ -1459,7 +1531,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int scan_long(lua_State* L) {
-        long value = luaL::checknumber(L, 1);
+        long value = luaL::checkinteger(L, 1);
         uintptr_t base;
         size_t size;
         scan_get_size(L, base, size);
@@ -1468,7 +1540,16 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     }
 
     int scan_ulong(lua_State* L) {
-        unsigned long value = luaL::checknumber(L, 1);
+        unsigned long value = luaL::checkinteger(L, 1);
+        uintptr_t base;
+        size_t size;
+        scan_get_size(L, base, size);
+        scan_process(L, base, size, value);
+        return 1;
+    }
+
+    int scan_address(lua_State* L) {
+        void* value = Class::check(L, 1, "address");
         uintptr_t base;
         size_t size;
         scan_get_size(L, base, size);
@@ -1494,12 +1575,91 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         return 1;
     }
 
-    int scan_address(lua_State* L) {
-        char* value = (char*)Class::check(L, 1, "address");
-        uintptr_t base;
-        size_t size;
-        scan_get_size(L, base, size);
-        scan_process(L, base, size, (uintptr_t)value);
+    int read_int8(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_read(address, sizeof(int8_t))) {
+            return luaL::error(L, "invalid read access at address %p", address);
+        }
+
+        lua::pushinteger(L, *(int8_t*)address);
+        return 1;
+    }
+
+    int read_uint8(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_read(address, sizeof(uint8_t))) {
+            return luaL::error(L, "invalid read access at address %p", address);
+        }
+
+        lua::pushinteger(L, *(uint8_t*)address);
+        return 1;
+    }
+
+    int read_int16(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_read(address, sizeof(int16_t))) {
+            return luaL::error(L, "invalid read access at address %p", address);
+        }
+
+        lua::pushinteger(L, *(int16_t*)address);
+        return 1;
+    }
+
+    int read_uint16(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_read(address, sizeof(uint16_t))) {
+            return luaL::error(L, "invalid read access at address %p", address);
+        }
+
+        lua::pushinteger(L, *(uint16_t*)address);
+        return 1;
+    }
+
+    int read_int32(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_read(address, sizeof(int32_t))) {
+            return luaL::error(L, "invalid read access at address %p", address);
+        }
+
+        lua::pushinteger(L, *(int32_t*)address);
+        return 1;
+    }
+
+    int read_uint32(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_read(address, sizeof(uint32_t))) {
+            return luaL::error(L, "invalid read access at address %p", address);
+        }
+
+        lua::pushinteger(L, *(uint32_t*)address);
+        return 1;
+    }
+
+    int read_int64(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_read(address, sizeof(int64_t))) {
+            return luaL::error(L, "invalid read access at address %p", address);
+        }
+
+        lua::pushinteger(L, *(int64_t*)address);
+        return 1;
+    }
+
+    int read_uint64(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_read(address, sizeof(uint64_t))) {
+            return luaL::error(L, "invalid read access at address %p", address);
+        }
+
+        lua::pushinteger(L, *(uint64_t*)address);
         return 1;
     }
 
@@ -1689,6 +1849,94 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
         push_address(L, *(void**)address);
         return 1;
+    }
+
+    int write_int8(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_write(address, sizeof(int8_t))) {
+            return luaL::error(L, "invalid write access at address %p", address);
+        }
+
+        *(int8_t*)address = luaL::checkinteger(L, 2);
+        return 0;
+    }
+
+    int write_uint8(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_write(address, sizeof(uint8_t))) {
+            return luaL::error(L, "invalid write access at address %p", address);
+        }
+
+        *(uint8_t*)address = luaL::checkinteger(L, 2);
+        return 0;
+    }
+
+    int write_int16(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_write(address, sizeof(int16_t))) {
+            return luaL::error(L, "invalid write access at address %p", address);
+        }
+
+        *(int16_t*)address = luaL::checkinteger(L, 2);
+        return 0;
+    }
+
+    int write_uint16(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_write(address, sizeof(uint16_t))) {
+            return luaL::error(L, "invalid write access at address %p", address);
+        }
+
+        *(uint16_t*)address = luaL::checkinteger(L, 2);
+        return 0;
+    }
+
+    int write_int32(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_write(address, sizeof(int32_t))) {
+            return luaL::error(L, "invalid write access at address %p", address);
+        }
+
+        *(int32_t*)address = luaL::checkinteger(L, 2);
+        return 0;
+    }
+
+    int write_uint32(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_write(address, sizeof(uint32_t))) {
+            return luaL::error(L, "invalid write access at address %p", address);
+        }
+
+        *(uint32_t*)address = luaL::checkinteger(L, 2);
+        return 0;
+    }
+
+    int write_int64(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_write(address, sizeof(int64_t))) {
+            return luaL::error(L, "invalid write access at address %p", address);
+        }
+
+        *(int64_t*)address = luaL::checkinteger(L, 2);
+        return 0;
+    }
+
+    int write_uint64(lua_State* L) {
+        unsigned char* address = (unsigned char*)Class::check(L, 1, "address");
+
+        if (!is_valid_write(address, sizeof(uint64_t))) {
+            return luaL::error(L, "invalid write access at address %p", address);
+        }
+
+        *(uint64_t*)address = luaL::checkinteger(L, 2);
+        return 0;
     }
 
     int write_bool(lua_State* L) {
@@ -2156,6 +2404,230 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         return 2;
     }
 
+    BEGIN_NOOPT // int8
+    #pragma section(".subroutine_int8_routine$a", read, execute)
+    #pragma section(".subroutine_int8_routine$b", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(code_seg(".subroutine_int8_routine$a"), noinline) static int8_t subroutine_int8_start_marker() { return 0xFF; }
+            __declspec(allocate(".subroutine_int8_routine$b")) static unsigned char subroutine_int8_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_int8_routine$a"), noinline, used)) int8_t subroutine_int8_start_marker() { return 0xFF; }
+            __attribute__((section(".subroutine_int8_routine$b"), noinline, used)) void subroutine_int8_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_int8(lua_State* L) {
+        int8_t value = luaL::checkinteger(L, 1);
+        size_t size;
+        char* ptr = (char*)subroutine_boundary(L, (uintptr_t)&subroutine_int8_start_marker, (uintptr_t)&subroutine_int8_end_marker, size);
+        for (size_t i = 0; i < size; i++) {
+            if (ptr[i] == 0xFF) {
+                *reinterpret_cast<int8_t*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // uint8
+    #pragma section(".subroutine_uint8_routine$a", read, execute)
+    #pragma section(".subroutine_uint8_routine$b", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(code_seg(".subroutine_uint8_routine$a"), noinline) static uint8_t subroutine_uint8_start_marker() { return 0xFF; }
+            __declspec(allocate(".subroutine_uint8_routine$b")) static unsigned char subroutine_uint8_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_uint8_routine$a"), noinline, used)) uint8_t subroutine_uint8_start_marker() { return 0xFF; }
+            __attribute__((section(".subroutine_uint8_routine$b"), noinline, used)) void subroutine_uint8_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_uint8(lua_State* L) {
+        uint8_t value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_uint8_start_marker, (uintptr_t)&subroutine_uint8_end_marker, size);
+        for (size_t i = 0; i < size; i++) {
+            if (ptr[i] == 0xFF) {
+                *reinterpret_cast<uint8_t*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+    
+    BEGIN_NOOPT // int16
+    #pragma section(".subroutine_int16_routine$a", read, execute)
+    #pragma section(".subroutine_int16_routine$b", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(code_seg(".subroutine_int16_routine$a"), noinline) static int16_t subroutine_int16_start_marker() { return 0xFFFF; }
+            __declspec(allocate(".subroutine_int16_routine$b")) static unsigned char subroutine_int16_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_int16_routine$a"), noinline, used)) int16_t subroutine_int16_start_marker() { return 0xFFFF; }
+            __attribute__((section(".subroutine_int16_routine$b"), noinline, used)) void subroutine_int16_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_int16(lua_State* L) {
+        int16_t value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_int16_start_marker, (uintptr_t)&subroutine_int16_end_marker, size);
+        for (size_t i = 0; i + 1 < size; i++) {
+            if (ptr[i+1] == 0xFF && ptr[i] == 0xFF) {
+                *reinterpret_cast<int16_t*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // uint16
+    #pragma section(".subroutine_uint16_routine$a", read, execute)
+    #pragma section(".subroutine_uint16_routine$b", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(code_seg(".subroutine_uint16_routine$a"), noinline) static uint16_t subroutine_uint16_start_marker() { return 0xFFFF; }
+            __declspec(allocate(".subroutine_uint16_routine$b")) static unsigned char subroutine_uint16_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_uint16_routine$a"), noinline, used)) uint16_t subroutine_uint16_start_marker() { return 0xFFFF; }
+            __attribute__((section(".subroutine_uint16_routine$b"), noinline, used)) void subroutine_uint16_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_uint16(lua_State* L) {
+        uint16_t value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_uint16_start_marker, (uintptr_t)&subroutine_uint16_end_marker, size);
+        for (size_t i = 0; i < size; i++) {
+            if (ptr[i+1] == 0xFF && ptr[i] == 0xFF) {
+                *reinterpret_cast<uint16_t*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // int32
+    #pragma section(".subroutine_int32_routine$a", read, execute)
+    #pragma section(".subroutine_int32_routine$b", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(code_seg(".subroutine_int32_routine$a"), noinline) static int32_t subroutine_int32_start_marker() { return 0xA1B2C3D4; }
+            __declspec(allocate(".subroutine_int32_routine$b")) static unsigned char subroutine_int32_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_int32_routine$a"), noinline, used)) int32_t subroutine_int32_start_marker() { return 0xA1B2C3D4; }
+            __attribute__((section(".subroutine_int32_routine$b"), noinline, used)) void subroutine_int32_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_int32(lua_State* L) {
+        int32_t value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_int32_start_marker, (uintptr_t)&subroutine_int32_end_marker, size);
+        for (size_t i = 0; i + 1 < size; i++) {
+            if (ptr[i + 3] == 0xA1 && ptr[i + 2] == 0xB2 && ptr[i + 1] == 0xC3 && ptr[i] == 0xD4) {
+                *reinterpret_cast<int32_t*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // uint32
+    #pragma section(".subroutine_uint32_routine$a", read, execute)
+    #pragma section(".subroutine_uint32_routine$b", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(code_seg(".subroutine_uint32_routine$a"), noinline) static uint32_t subroutine_uint32_start_marker() { return 0xA1B2C3D4; }
+            __declspec(allocate(".subroutine_uint32_routine$b")) static unsigned char subroutine_uint32_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_uint32_routine$a"), noinline, used)) uint32_t subroutine_uint32_start_marker() { return 0xA1B2C3D4; }
+            __attribute__((section(".subroutine_uint32_routine$b"), noinline, used)) void subroutine_uint32_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_uint32(lua_State* L) {
+        uint32_t value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_uint32_start_marker, (uintptr_t)&subroutine_uint32_end_marker, size);
+        for (size_t i = 0; i < size; i++) {
+            if (ptr[i + 3] == 0xA1 && ptr[i + 2] == 0xB2 && ptr[i + 1] == 0xC3 && ptr[i] == 0xD4) {
+                *reinterpret_cast<uint32_t*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // int64
+    #pragma section(".subroutine_int64_routine$a", read, execute)
+    #pragma section(".subroutine_int64_routine$b", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(code_seg(".subroutine_int64_routine$a"), noinline) static int64_t subroutine_int64_start_marker() { return 0xA1B2C3D4E5F6; }
+            __declspec(allocate(".subroutine_int64_routine$b")) static unsigned char subroutine_int64_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_int64_routine$a"), noinline, used)) int64_t subroutine_int64_start_marker() { return 0xA1B2C3D4E5F6; }
+            __attribute__((section(".subroutine_int64_routine$b"), noinline, used)) void subroutine_int64_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_int64(lua_State* L) {
+        int64_t value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_int64_start_marker, (uintptr_t)&subroutine_int64_end_marker, size);
+        for (size_t i = 0; i + 1 < size; i++) {
+            if (ptr[i + 5] == 0xA1 && ptr[i + 4] == 0xB2 && ptr[i + 3] == 0xC3 && ptr[i + 2] == 0xD4 && ptr[i + 1] == 0xE5 && ptr[i] == 0xF6) {
+                *reinterpret_cast<int64_t*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
+    BEGIN_NOOPT // uint64
+    #pragma section(".subroutine_uint64_routine$a", read, execute)
+    #pragma section(".subroutine_uint64_routine$b", read, execute)
+    extern "C" {
+        #ifdef _WIN32
+            __declspec(code_seg(".subroutine_uint64_routine$a"), noinline) static uint64_t subroutine_uint64_start_marker() { return 0xA1B2C3D4E5F6; }
+            __declspec(allocate(".subroutine_uint64_routine$b")) static unsigned char subroutine_uint64_end_marker = 0;
+        #else
+            __attribute__((section(".subroutine_uint64_routine$a"), noinline, used)) uint64_t subroutine_uint64_start_marker() { return 0xA1B2C3D4E5F6; }
+            __attribute__((section(".subroutine_uint64_routine$b"), noinline, used)) void subroutine_uint64_end_marker() {}
+        #endif
+    }
+    END_NOOPT
+    int subroutine_uint64(lua_State* L) {
+        uint64_t value = luaL::checkinteger(L, 1);
+        size_t size;
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_uint64_start_marker, (uintptr_t)&subroutine_uint64_end_marker, size);
+        for (size_t i = 0; i < size; i++) {
+            if (ptr[i + 5] == 0xA1 && ptr[i + 4] == 0xB2 && ptr[i + 3] == 0xC3 && ptr[i + 2] == 0xD4 && ptr[i + 1] == 0xE5 && ptr[i] == 0xF6) {
+                *reinterpret_cast<uint64_t*>(ptr + i) = value;
+                break;
+            }
+        }
+        push_address(L, (void*)ptr);
+        lua::pushinteger(L, size);
+        return 2;
+    }
+
     BEGIN_NOOPT // bool
     #pragma section(".subroutine_bool_routine$a", read, execute)
     #pragma section(".subroutine_bool_routine$b", read, execute)
@@ -2172,7 +2644,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     int subroutine_bool(lua_State* L) {
         bool value = luaL::checkboolean(L, 1);
         size_t size;
-        char* ptr = (char*)subroutine_boundary(L, (uintptr_t)&subroutine_bool_start_marker, (uintptr_t)&subroutine_bool_end_marker, size);
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_bool_start_marker, (uintptr_t)&subroutine_bool_end_marker, size);
         for (size_t i = 0; i < size; i++) {
             if (ptr[i] == 0x01) {
                 *reinterpret_cast<bool*>(ptr + i) = value;
@@ -2200,7 +2672,7 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
     int subroutine_char(lua_State* L) {
         char value = luaL::checkinteger(L, 1);
         size_t size;
-        char* ptr = (char*)subroutine_boundary(L, (uintptr_t)&subroutine_char_start_marker, (uintptr_t)&subroutine_char_end_marker, size);
+        unsigned char* ptr = (unsigned char*)subroutine_boundary(L, (uintptr_t)&subroutine_char_start_marker, (uintptr_t)&subroutine_char_end_marker, size);
         for (size_t i = 0; i < size; i++) {
             if (ptr[i] == 0xFF) {
                 *reinterpret_cast<char*>(ptr + i) = value;
@@ -3287,6 +3759,30 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
         lua::newtable(L);
 
+        lua::pushcfunction(L, scan_int8);
+        lua::setfield(L, -2, "int8");
+
+        lua::pushcfunction(L, scan_uint8);
+        lua::setfield(L, -2, "uint8");
+
+        lua::pushcfunction(L, scan_int16);
+        lua::setfield(L, -2, "int16");
+
+        lua::pushcfunction(L, scan_uint16);
+        lua::setfield(L, -2, "uint16");
+
+        lua::pushcfunction(L, scan_int32);
+        lua::setfield(L, -2, "int32");
+
+        lua::pushcfunction(L, scan_uint32);
+        lua::setfield(L, -2, "uint32");
+
+        lua::pushcfunction(L, scan_int64);
+        lua::setfield(L, -2, "int64");
+
+        lua::pushcfunction(L, scan_uint64);
+        lua::setfield(L, -2, "uint64");
+
         lua::pushcfunction(L, scan_bool);
         lua::setfield(L, -2, "bool");
 
@@ -3326,6 +3822,30 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         lua::setfield(L, -2, "scan");
 
         lua::newtable(L);
+
+        lua::pushcfunction(L, read_int8);
+        lua::setfield(L, -2, "int8");
+
+        lua::pushcfunction(L, read_uint8);
+        lua::setfield(L, -2, "uint8");
+
+        lua::pushcfunction(L, read_int16);
+        lua::setfield(L, -2, "int16");
+
+        lua::pushcfunction(L, read_uint16);
+        lua::setfield(L, -2, "uint16");
+
+        lua::pushcfunction(L, read_int32);
+        lua::setfield(L, -2, "int32");
+
+        lua::pushcfunction(L, read_uint32);
+        lua::setfield(L, -2, "uint32");
+
+        lua::pushcfunction(L, read_int64);
+        lua::setfield(L, -2, "int64");
+
+        lua::pushcfunction(L, read_uint64);
+        lua::setfield(L, -2, "uint64");
 
         lua::pushcfunction(L, read_bool);
         lua::setfield(L, -2, "bool");
@@ -3372,6 +3892,30 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         lua::setfield(L, -2, "read");
 
         lua::newtable(L);
+
+        lua::pushcfunction(L, write_int8);
+        lua::setfield(L, -2, "int8");
+
+        lua::pushcfunction(L, write_uint8);
+        lua::setfield(L, -2, "uint8");
+
+        lua::pushcfunction(L, write_int16);
+        lua::setfield(L, -2, "int16");
+
+        lua::pushcfunction(L, write_uint16);
+        lua::setfield(L, -2, "uint16");
+
+        lua::pushcfunction(L, write_int32);
+        lua::setfield(L, -2, "int32");
+
+        lua::pushcfunction(L, write_uint32);
+        lua::setfield(L, -2, "uint32");
+
+        lua::pushcfunction(L, write_int64);
+        lua::setfield(L, -2, "int64");
+
+        lua::pushcfunction(L, write_uint64);
+        lua::setfield(L, -2, "uint64");
 
         lua::pushcfunction(L, write_bool);
         lua::setfield(L, -2, "bool");
@@ -3421,6 +3965,30 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
         lua::pushcfunction(L, subroutine_blank);
         lua::setfield(L, -2, "blank");
+
+        lua::pushcfunction(L, subroutine_int8);
+        lua::setfield(L, -2, "int8");
+
+        lua::pushcfunction(L, subroutine_uint8);
+        lua::setfield(L, -2, "uint8");
+
+        lua::pushcfunction(L, subroutine_int16);
+        lua::setfield(L, -2, "int16");
+
+        lua::pushcfunction(L, subroutine_uint16);
+        lua::setfield(L, -2, "uint16");
+
+        lua::pushcfunction(L, subroutine_int32);
+        lua::setfield(L, -2, "int32");
+
+        lua::pushcfunction(L, subroutine_uint32);
+        lua::setfield(L, -2, "uint32");
+
+        lua::pushcfunction(L, subroutine_int64);
+        lua::setfield(L, -2, "int64");
+
+        lua::pushcfunction(L, subroutine_uint64);
+        lua::setfield(L, -2, "uint64");
 
         lua::pushcfunction(L, subroutine_bool);
         lua::setfield(L, -2, "bool");
@@ -3478,6 +4046,79 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         lua::setfield(L, -2, "get");
 
         lua::setfield(L, -2, "jump");
+
+        lua::newtable(L);
+
+        lua::pushinteger(L, sizeof(int8_t));
+        lua::setfield(L, -2, "int8");
+
+        lua::pushinteger(L, sizeof(uint8_t));
+        lua::setfield(L, -2, "uint8");
+
+        lua::pushinteger(L, sizeof(int16_t));
+        lua::setfield(L, -2, "int16");
+
+        lua::pushinteger(L, sizeof(uint16_t));
+        lua::setfield(L, -2, "uint16");
+
+        lua::pushinteger(L, sizeof(int32_t));
+        lua::setfield(L, -2, "int32");
+
+        lua::pushinteger(L, sizeof(uint32_t));
+        lua::setfield(L, -2, "uint32");
+
+        lua::pushinteger(L, sizeof(int64_t));
+        lua::setfield(L, -2, "int64");
+
+        lua::pushinteger(L, sizeof(uint64_t));
+        lua::setfield(L, -2, "uint64");
+
+        lua::pushinteger(L, sizeof(void*));
+        lua::setfield(L, -2, "address");
+
+        lua::pushinteger(L, sizeof(void*));
+        lua::setfield(L, -2, "pointer");
+
+        lua::pushinteger(L, sizeof(bool));
+        lua::setfield(L, -2, "bool");
+
+        lua::pushinteger(L, sizeof(char));
+        lua::setfield(L, -2, "char");
+
+        lua::pushinteger(L, sizeof(unsigned char));
+        lua::setfield(L, -2, "uchar");
+
+        lua::pushinteger(L, sizeof(short));
+        lua::setfield(L, -2, "short");
+
+        lua::pushinteger(L, sizeof(unsigned short));
+        lua::setfield(L, -2, "ushort");
+
+        lua::pushinteger(L, sizeof(int));
+        lua::setfield(L, -2, "int");
+
+        lua::pushinteger(L, sizeof(unsigned int));
+        lua::setfield(L, -2, "uint");
+
+        lua::pushinteger(L, sizeof(long));
+        lua::setfield(L, -2, "long");
+
+        lua::pushinteger(L, sizeof(unsigned long));
+        lua::setfield(L, -2, "ulong");
+
+        lua::pushinteger(L, sizeof(long long));
+        lua::setfield(L, -2, "longlong");
+
+        lua::pushinteger(L, sizeof(unsigned long long));
+        lua::setfield(L, -2, "ulonglong");
+
+        lua::pushinteger(L, sizeof(float));
+        lua::setfield(L, -2, "float");
+
+        lua::pushinteger(L, sizeof(double));
+        lua::setfield(L, -2, "double");
+
+        lua::setfield(L, -2, "size");
     }
 
     void api()
