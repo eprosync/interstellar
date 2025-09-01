@@ -252,6 +252,30 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         if (index == "raw") {
             lua::pushinteger(L, (uintptr_t)address);
             return 1;
+        } else if (index == "int8") {
+            lua::pushinteger(L, (int8_t)(uintptr_t)address);
+            return 1;
+        } else if (index == "uint8") {
+            lua::pushinteger(L, (uint8_t)(uintptr_t)address);
+            return 1;
+        } else if (index == "int16") {
+            lua::pushinteger(L, (int16_t)(uintptr_t)address);
+            return 1;
+        } else if (index == "uint16") {
+            lua::pushinteger(L, (uint16_t)(uintptr_t)address);
+            return 1;
+        } else if (index == "int32") {
+            lua::pushinteger(L, (int32_t)(uintptr_t)address);
+            return 1;
+        } else if (index == "uint32") {
+            lua::pushinteger(L, (uint32_t)(uintptr_t)address);
+            return 1;
+        } else if (index == "int64") {
+            lua::pushinteger(L, (int64_t)(uintptr_t)address);
+            return 1;
+        } else if (index == "uint64") {
+            lua::pushinteger(L, (uint64_t)(uintptr_t)address);
+            return 1;
         } else if (index == "bool") {
             lua::pushboolean(L, (bool)(uintptr_t)address);
             return 1;

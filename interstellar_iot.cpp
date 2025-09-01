@@ -1276,6 +1276,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         using context_t = restinio::io_context_holder_t;
         using server_t = restinio::running_server_handle_t<restinio::default_traits_t>;
         using request_handle_t = restinio::request_handle_t;
+        using request_handling_status_t = restinio::request_handling_status_t;
         using query_string_params_t = restinio::query_string_params_t;
 
     public:
@@ -1363,26 +1364,9 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             this->handlers.clear();
         }
 
-        void socket_handle(std::string path, rws::ws_handle_t connection, rws::message_handle_t m, bool internal = false) {
-            if (!this->active) {
-                return;
-            }
-
-            if (!internal) {
-                waiting++;
-                std::unique_lock<std::mutex> lock(schedule_mutex);
-                ready_to_process.wait(lock, [this] { return !processing.load() && syncing.load(); });
-                processing = true;
-                waiting--;
-                lock.unlock(); lock.release();
-            }
-
-            if (!this->active) {
-                processing = false;
-                if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
-                return;
-            }
-
+        std::unordered_map<std::string, std::unordered_map<std::uint64_t, rws::ws_handle_t>> sockets;
+        void socket_lua(std::string path, rws::ws_handle_t connection, rws::message_handle_t m)
+        {
             if (handlers.find("SOCKET") != handlers.end()) {
                 auto& handles = handlers["SOCKET"];
                 if (handles.find(path) != handles.end()) {
@@ -1433,14 +1417,30 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 }
                 connection->send_message(*m);
             }
-
-            if (!internal) {
-                processing = false;
-                if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
-            }
         }
 
-        serve_status_carry handle(request_handle_t& req, int reference, int tbl_reference, std::string method, std::string path)
+        std::queue<std::tuple<std::string, rws::ws_handle_t, rws::message_handle_t>> socket_handles;
+        void socket_handle(std::string path, rws::ws_handle_t connection, rws::message_handle_t m, bool internal) {
+            if (!this->active) return;
+
+            if (internal) {
+                this->socket_lua(path, connection, m);
+                return;
+            }
+
+            std::unique_lock<std::mutex> sync_lock(sync_mutex);
+            socket_handles.push(std::tuple(path, connection, m));
+            sync_lock.unlock(); sync_lock.release();
+
+            waiting++;
+            std::unique_lock<std::mutex> lock(schedule_mutex);
+            processing_done.wait(lock, [this] { return !processing.load() && syncing.load(); });
+            waiting--;
+            processing_ack.notify_one();
+            lock.unlock(); lock.release();
+        }
+
+        serve_status_carry process_handle_lua(request_handle_t& req, int reference, int tbl_reference, std::string method, std::string path)
         {
             serve_status_carry response{
                 false,
@@ -1531,9 +1531,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             return response;
         }
 
-        request_handle_t request;
-        std::unordered_map<std::string, std::unordered_map<std::uint64_t, rws::ws_handle_t>> sockets;
-        restinio::request_handling_status_t process(request_handle_t& req) {
+        request_handling_status_t process_lua(request_handle_t& req)
+        {
             std::string path = std::string(req->header().path());
             std::string query = std::string(req->header().query());
             int method_id = req->header().method().raw_id();
@@ -1545,20 +1544,9 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 headers.emplace_back(std::pair<std::string, std::string>(it->name(), it->value()));
             }
 
-            if (!this->active) {
-                return restinio::request_not_handled();
-            }
-
-            waiting++;
-            std::unique_lock<std::mutex> lock(schedule_mutex);
-            ready_to_process.wait(lock, [this] { return !processing.load() && syncing.load(); });
-            processing = true;
-            waiting--;
-            lock.unlock(); lock.release();
+            std::cout << path << std::endl;
 
             if (!this->active) {
-                processing = false;
-                if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
                 return restinio::request_not_handled();
             }
 
@@ -1627,7 +1615,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 auto& handles = handlers[method];
                 if (handles.find("ANY") != handles.end()) {
                     int reference = handles["ANY"];
-                    serve_status_carry response = this->handle(req, reference, tbl_reference, "ANY", "ANY");
+                    serve_status_carry response = this->process_handle_lua(req, reference, tbl_reference, "ANY", "ANY");
                     if (response.done) {
                         auto res = req->create_response(response.status);
                         res.set_body(response.body);
@@ -1637,8 +1625,6 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
-                        processing = false;
-                        if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
                         return restinio::request_accepted();
                     }
                 }
@@ -1649,7 +1635,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
                 if (handles.find("ANY") != handles.end()) {
                     int reference = handles["ANY"];
-                    serve_status_carry response = this->handle(req, reference, tbl_reference, method, "ANY");
+                    serve_status_carry response = this->process_handle_lua(req, reference, tbl_reference, method, "ANY");
                     if (response.done) {
                         auto res = req->create_response(response.status);
                         res.set_body(response.body);
@@ -1659,15 +1645,13 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
-                        processing = false;
-                        if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
                         return restinio::request_accepted();
                     }
                 }
 
                 if (handles.find(path) != handles.end()) {
                     int reference = handles[path];
-                    serve_status_carry response = this->handle(req, reference, tbl_reference, method, path);
+                    serve_status_carry response = this->process_handle_lua(req, reference, tbl_reference, method, path);
                     if (response.done) {
                         auto res = req->create_response(response.status);
                         res.set_body(response.body);
@@ -1677,32 +1661,71 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                         res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
-                        processing = false;
-                        if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
                         return restinio::request_accepted();
                     }
                 }
             }
 
             luaL::rmref(L, tbl_reference);
-
             this->request = nullptr;
-            processing = false;
-            if (waiting > 0) ready_to_process.notify_one(); else processing_done.notify_all();
 
             return restinio::request_not_handled();
+        }
+
+        request_handle_t request;
+        std::queue<request_handle_t> request_handles;
+        std::unordered_map<restinio::request_id_t, request_handling_status_t> request_responses;
+        request_handling_status_t process(request_handle_t& req) {
+            if (!this->active) {
+                return restinio::request_not_handled();
+            }
+
+            auto req_id = req->request_id();
+
+            std::unique_lock<std::mutex> sync_lock_push(sync_mutex);
+            request_handles.push(req);
+            sync_lock_push.unlock(); sync_lock_push.release();
+
+            waiting++;
+            std::unique_lock<std::mutex> lock(schedule_mutex);
+            processing_done.wait(lock, [this] { return !processing.load() && syncing.load(); });
+            waiting--;
+            processing_ack.notify_one();
+            lock.unlock(); lock.release();
+
+            request_handling_status_t response = restinio::request_not_handled();
+
+            std::unique_lock<std::mutex> sync_lock_return(sync_mutex);
+            if (request_responses.find(req_id) != request_responses.end()) {
+                response = request_responses[req_id];
+                request_responses.erase(req_id);
+            }
+            sync_lock_return.unlock(); sync_lock_return.release();
+
+            return response;
         }
 
         void sync() {
             if (waiting > 0) {
                 syncing = true;
-                ready_to_process.notify_one();
                 std::unique_lock<std::mutex> lock(sync_mutex);
-                processing_done.wait(lock, [this]() {
-                    return waiting.load() == 0 && !processing.load();
-                });
-                lock.unlock(); lock.release();
+                while (request_handles.size() > 0) {
+                    processing = true;
+                    request_handle_t& req = request_handles.front(); request_handles.pop();
+                    request_responses.emplace(req->request_id(), this->process_lua(req));
+                    processing = false;
+                }
+                while (socket_handles.size() > 0) {
+                    processing = true;
+                    auto& tuple = socket_handles.front();
+                    this->socket_lua(std::get<0>(tuple), std::get<1>(tuple), std::get<2>(tuple));
+                    socket_handles.pop();
+                    processing = false;
+                }
+                processing_done.notify_all();
+                processing_ack.wait(lock, [this] { return waiting.load() == 0; });
                 syncing = false;
+                lock.unlock(); lock.release();
             }
         }
 
@@ -1745,8 +1768,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         server_t server;
         std::mutex sync_mutex;
         std::mutex schedule_mutex;
-        std::condition_variable ready_to_process;
         std::condition_variable processing_done;
+        std::condition_variable processing_ack;
         std::atomic<bool> active = false;
         std::atomic<int> waiting = 0;
         std::atomic<bool> syncing = false;
@@ -2124,7 +2147,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     *serve->request,
                     rws::activation_t::immediate,
                     [serve, path](rws::ws_handle_t wsh, rws::message_handle_t m) {
-                        serve->socket_handle(path, wsh, m);
+                        serve->socket_handle(path, wsh, m, false);
                     }
                 );
 
