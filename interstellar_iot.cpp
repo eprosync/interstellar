@@ -1544,8 +1544,6 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 headers.emplace_back(std::pair<std::string, std::string>(it->name(), it->value()));
             }
 
-            std::cout << path << std::endl;
-
             if (!this->active) {
                 return restinio::request_not_handled();
             }
