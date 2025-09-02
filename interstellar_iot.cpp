@@ -1430,9 +1430,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             std::unique_lock<std::mutex> sync_lock(sync_mutex);
             socket_handles.push(std::tuple(path, connection, m));
-            waiting++;
-            std::unique_lock<std::mutex> lock(schedule_mutex);
             sync_lock.unlock(); sync_lock.release();
+
+            std::unique_lock<std::mutex> lock(schedule_mutex);
+            waiting++;
             processing_done.wait(lock, [this] { return !processing.load() && syncing.load(); });
             waiting--;
             processing_ack.notify_one();
@@ -1670,33 +1671,34 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         }
 
         request_handle_t request;
-        std::queue<request_handle_t> request_handles;
-        std::unordered_map<restinio::request_id_t, request_handling_status_t> request_responses;
+        std::queue<request_handle_t*> request_handles;
+        std::unordered_map<uintptr_t, request_handling_status_t> request_responses;
         request_handling_status_t process(request_handle_t& req) {
             if (!this->active) {
                 return restinio::request_not_handled();
             }
 
-            auto req_id = req->request_id();
+            request_handle_t* ptr = &req;
+            uintptr_t uid = (uintptr_t)ptr;
 
-            std::unique_lock<std::mutex> sync_lock_push(sync_mutex);
-            request_handles.push(req);
-            waiting++;
+            std::unique_lock<std::mutex> sync_lock(sync_mutex);
+            request_handles.push(ptr);
+            sync_lock.unlock();
+
             std::unique_lock<std::mutex> lock(schedule_mutex);
-            sync_lock_push.unlock(); sync_lock_push.release();
+            waiting++;
             processing_done.wait(lock, [this] { return !processing.load() && syncing.load(); });
             waiting--;
             processing_ack.notify_one();
             lock.unlock(); lock.release();
 
+            sync_lock.lock();
             request_handling_status_t response = restinio::request_not_handled();
-
-            std::unique_lock<std::mutex> sync_lock_return(sync_mutex);
-            if (request_responses.find(req_id) != request_responses.end()) {
-                response = request_responses[req_id];
-                request_responses.erase(req_id);
+            if (request_responses.find(uid) != request_responses.end()) {
+                response = request_responses[uid];
+                request_responses.erase(uid);
             }
-            sync_lock_return.unlock(); sync_lock_return.release();
+            sync_lock.unlock(); sync_lock.release();
 
             return response;
         }
@@ -1707,8 +1709,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 std::unique_lock<std::mutex> lock(sync_mutex);
                 while (request_handles.size() > 0) {
                     processing = true;
-                    request_handle_t& req = request_handles.front(); request_handles.pop();
-                    request_responses.emplace(req->request_id(), this->process_lua(req));
+                    request_handle_t* req = request_handles.front(); request_handles.pop();
+                    request_responses.emplace((uintptr_t)req, this->process_lua(*req));
                     processing = false;
                 }
                 while (socket_handles.size() > 0) {
