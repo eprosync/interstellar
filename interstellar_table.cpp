@@ -61,12 +61,11 @@ namespace INTERSTELLAR_NAMESPACE::Table {
         TValue* tv = lua::toraw(L, index);
         GCobj* gcobj = gcV(tv);
 
-        if (cyclic.find(gcobj) == cyclic.end()) {
-            cyclic.emplace(gcobj);
+        if (cyclic.find(gcobj) != cyclic.end()) {
+            luaL::error(L, "Cyclic reference detected during JSON serialization");
+            return rapidjson::Value();
         }
-        else {
-            return rapidjson::Value("[cyclic]", allocator);
-        }
+        cyclic.emplace(gcobj);
 
         if (index < 0) index = lua::gettop(L) + index + 1;
 
@@ -95,9 +94,11 @@ namespace INTERSTELLAR_NAMESPACE::Table {
                         value.SetDouble(lua::tonumber(L, -1));
                     }
                     break;
-                case datatype::string:
-                    value.SetString(lua::tocstring(L, -1).c_str(), allocator);
+                case datatype::string: {
+                    auto s = lua::tocstring(L, -1);
+                    value.SetString(s.c_str(), static_cast<rapidjson::SizeType>(s.size()), allocator);
                     break;
+                }
                 case datatype::table:
                     value = lua_to_json(L, -1, allocator, cyclic);
                     break;
@@ -203,8 +204,11 @@ namespace INTERSTELLAR_NAMESPACE::Table {
         else if (value.IsBool()) {
             lua::pushboolean(L, value.GetBool());
         }
-        else if (value.IsInt64() || value.IsUint64()) {
+        else if (value.IsInt64()) {
             lua::pushnumber(L, static_cast<lua_Number>(value.GetInt64()));
+        }
+        else if (value.IsUint64()) {
+            lua::pushnumber(L, static_cast<lua_Number>(value.GetUint64()));
         }
         else if (value.IsDouble()) {
             lua::pushnumber(L, value.GetDouble());
