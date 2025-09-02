@@ -1430,10 +1430,9 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             std::unique_lock<std::mutex> sync_lock(sync_mutex);
             socket_handles.push(std::tuple(path, connection, m));
-            sync_lock.unlock(); sync_lock.release();
-
             waiting++;
             std::unique_lock<std::mutex> lock(schedule_mutex);
+            sync_lock.unlock(); sync_lock.release();
             processing_done.wait(lock, [this] { return !processing.load() && syncing.load(); });
             waiting--;
             processing_ack.notify_one();
