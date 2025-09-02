@@ -1682,10 +1682,9 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             std::unique_lock<std::mutex> sync_lock_push(sync_mutex);
             request_handles.push(req);
-            sync_lock_push.unlock(); sync_lock_push.release();
-
             waiting++;
             std::unique_lock<std::mutex> lock(schedule_mutex);
+            sync_lock_push.unlock(); sync_lock_push.release();
             processing_done.wait(lock, [this] { return !processing.load() && syncing.load(); });
             waiting--;
             processing_ack.notify_one();
