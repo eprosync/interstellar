@@ -1672,31 +1672,29 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
         request_handle_t request;
         std::queue<request_handle_t*> request_handles;
-        std::unordered_map<uintptr_t, request_handling_status_t> request_responses;
+        std::unordered_map<restinio::connection_id_t, request_handling_status_t> request_responses;
         request_handling_status_t process(request_handle_t& req) {
             if (!this->active) {
                 return restinio::request_not_handled();
             }
 
-            request_handle_t* ptr = &req;
-            uintptr_t uid = (uintptr_t)ptr;
+            restinio::connection_id_t id = req->connection_id();
 
             std::unique_lock<std::mutex> sync_lock(sync_mutex);
-            request_handles.push(ptr);
+            waiting++;
+            request_handles.push(&req);
             sync_lock.unlock();
 
             std::unique_lock<std::mutex> lock(schedule_mutex);
-            waiting++;
-            processing_done.wait(lock, [this] { return !processing.load() && syncing.load(); });
+            processing_done.wait(lock, [this, id] { return !processing.load() && syncing.load() && request_responses.find(id) != request_responses.end(); });
             waiting--;
-            processing_ack.notify_one();
             lock.unlock(); lock.release();
 
             sync_lock.lock();
             request_handling_status_t response = restinio::request_not_handled();
-            if (request_responses.find(uid) != request_responses.end()) {
-                response = request_responses[uid];
-                request_responses.erase(uid);
+            if (request_responses.find(id) != request_responses.end()) {
+                response = request_responses[id];
+                request_responses.erase(id);
             }
             sync_lock.unlock(); sync_lock.release();
 
@@ -1707,21 +1705,18 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             if (waiting > 0) {
                 syncing = true;
                 std::unique_lock<std::mutex> lock(sync_mutex);
-                while (request_handles.size() > 0) {
-                    processing = true;
-                    request_handle_t* req = request_handles.front(); request_handles.pop();
-                    request_responses.emplace((uintptr_t)req, this->process_lua(*req));
-                    processing = false;
+                processing = true;
+                for (; !request_handles.empty(); request_handles.pop()) {
+                    request_handle_t req = *request_handles.front();
+                    request_responses.emplace(req->connection_id(), this->process_lua(req));
                 }
                 while (socket_handles.size() > 0) {
-                    processing = true;
                     auto& tuple = socket_handles.front();
                     this->socket_lua(std::get<0>(tuple), std::get<1>(tuple), std::get<2>(tuple));
                     socket_handles.pop();
-                    processing = false;
                 }
+                processing = false;
                 processing_done.notify_all();
-                processing_ack.wait(lock, [this] { return waiting.load() == 0; });
                 syncing = false;
                 lock.unlock(); lock.release();
             }
@@ -1769,7 +1764,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::condition_variable processing_done;
         std::condition_variable processing_ack;
         std::atomic<bool> active = false;
-        std::atomic<int> waiting = 0;
+        std::atomic<unsigned int> waiting = 0;
+        std::atomic<unsigned int> acks = 0;
         std::atomic<bool> syncing = false;
         std::atomic<bool> processing = false;
     };
