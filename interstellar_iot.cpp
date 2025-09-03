@@ -1005,6 +1005,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
     class Serve;
     std::unordered_map<uintptr_t, std::unordered_map<uint16_t, Serve*>> serves;
+    namespace rws = restinio::websocket::basic;
 
     bool is_serve(lua_State* L, void* value)
     {
@@ -1208,7 +1209,9 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
     }
 
     struct serve_status_carry {
+        Serve* serve;
         bool done = false;
+        bool upgrade = false;
         restinio::http_status_line_t status;
         std::vector<std::pair<std::string, std::string>> headers;
         std::string body;
@@ -1268,10 +1271,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         return 0;
     }
 
-    namespace rws = restinio::websocket::basic;
-
     void serve_socket_push(lua_State* L, std::string path, Serve* parent, rws::ws_handle_t socket);
-
+    int serve_res_upgrade(lua_State* L);
     class Serve {
         using context_t = restinio::io_context_holder_t;
         using server_t = restinio::running_server_handle_t<restinio::default_traits_t>;
@@ -1443,6 +1444,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         serve_status_carry process_handle_lua(request_handle_t& req, int reference, int tbl_reference, std::string method, std::string path)
         {
             serve_status_carry response{
+                this,
+                false,
                 false,
                 restinio::status_ok(),
                 {},
@@ -1468,6 +1471,9 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
                 lua::pushcfunction(L, serve_res_status);
                 lua::setfield(L, -2, "status");
+
+                lua::pushcfunction(L, serve_res_upgrade);
+                lua::setfield(L, -2, "upgrade");
 
                 lua::setfield(L, -2, "__index");
 
@@ -1615,12 +1621,14 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     int reference = handles["ANY"];
                     serve_status_carry response = this->process_handle_lua(req, reference, tbl_reference, "ANY", "ANY");
                     if (response.done) {
-                        auto res = req->create_response(response.status);
-                        res.set_body(response.body);
-                        for (auto& header : response.headers) {
-                            res.append_header(header.first, header.second);
+                        if (!response.upgrade) {
+                            auto res = req->create_response(response.status);
+                            res.set_body(response.body);
+                            for (auto& header : response.headers) {
+                                res.append_header(header.first, header.second);
+                            }
+                            res.done();
                         }
-                        res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
                         return restinio::request_accepted();
@@ -1635,12 +1643,14 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     int reference = handles["ANY"];
                     serve_status_carry response = this->process_handle_lua(req, reference, tbl_reference, method, "ANY");
                     if (response.done) {
-                        auto res = req->create_response(response.status);
-                        res.set_body(response.body);
-                        for (auto& header : response.headers) {
-                            res.append_header(header.first, header.second);
+                        if (!response.upgrade) {
+                            auto res = req->create_response(response.status);
+                            res.set_body(response.body);
+                            for (auto& header : response.headers) {
+                                res.append_header(header.first, header.second);
+                            }
+                            res.done();
                         }
-                        res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
                         return restinio::request_accepted();
@@ -1651,12 +1661,14 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     int reference = handles[path];
                     serve_status_carry response = this->process_handle_lua(req, reference, tbl_reference, method, path);
                     if (response.done) {
-                        auto res = req->create_response(response.status);
-                        res.set_body(response.body);
-                        for (auto& header : response.headers) {
-                            res.append_header(header.first, header.second);
+                        if (!response.upgrade) {
+                            auto res = req->create_response(response.status);
+                            res.set_body(response.body);
+                            for (auto& header : response.headers) {
+                                res.append_header(header.first, header.second);
+                            }
+                            res.done();
                         }
-                        res.done();
                         luaL::rmref(L, tbl_reference);
                         this->request = nullptr;
                         return restinio::request_accepted();
@@ -1703,17 +1715,16 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
         void sync() {
             if (waiting > 0) {
-                syncing = true;
                 std::unique_lock<std::mutex> lock(sync_mutex);
+                syncing = true;
                 processing = true;
                 for (; !request_handles.empty(); request_handles.pop()) {
                     request_handle_t req = *request_handles.front();
                     request_responses.emplace(req->connection_id(), this->process_lua(req));
                 }
-                while (socket_handles.size() > 0) {
+                for (; !socket_handles.empty(); socket_handles.pop()) {
                     auto& tuple = socket_handles.front();
                     this->socket_lua(std::get<0>(tuple), std::get<1>(tuple), std::get<2>(tuple));
-                    socket_handles.pop();
                 }
                 processing = false;
                 processing_done.notify_all();
@@ -2016,6 +2027,41 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         Class::spawn(L, sock, "serve.socket");
     }
 
+    int serve_res_upgrade(lua_State* L) {
+        serve_status_carry* self = (serve_status_carry*)Class::check(L, 1, "serve.response");
+        if (!self || self == nullptr) return 0;
+        Serve* serve = self->serve;
+        if (!serve->is_processing()) return 0;
+
+        if (restinio::http_connection_header_t::upgrade == serve->request->header().connection()) {
+            std::string path = std::string(serve->request->header().path());
+            rws::ws_handle_t wsh =
+                rws::upgrade< restinio::default_traits_t >(
+                    *serve->request,
+                    rws::activation_t::immediate,
+                    [serve, path](rws::ws_handle_t wsh, rws::message_handle_t m) {
+                        serve->socket_handle(path, wsh, m, false);
+                    }
+                );
+
+            if (serve->sockets.find(path) == serve->sockets.end()) {
+                serve->sockets[path] = std::unordered_map<std::uint64_t, rws::ws_handle_t>();
+            }
+
+            serve->sockets[path].emplace(wsh->connection_id(), wsh);
+
+            serve_socket_push(L, path, serve, wsh);
+
+            self->done = true;
+            self->upgrade = true;
+        }
+        else {
+            lua::pushboolean(L, false);
+        }
+
+        return 1;
+    }
+
     int serve_start(lua_State* L)
     {
         Serve* serve = (Serve*)Class::check(L, 1, "serve");
@@ -2123,37 +2169,6 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             lua::pushnumber(L, index++);
             serve_socket_push(L, path, serve, entry.second);
             lua::settable(L, -3);
-        }
-
-        return 1;
-    }
-    
-    int serve_upgrade(lua_State* L)
-    {
-        Serve* serve = (Serve*)Class::check(L, 1, "serve");
-
-        if (!serve->is_processing()) return 0;
-
-        if (restinio::http_connection_header_t::upgrade == serve->request->header().connection()) {
-            std::string path = std::string(serve->request->header().path());
-            rws::ws_handle_t wsh =
-                rws::upgrade< restinio::default_traits_t >(
-                    *serve->request,
-                    rws::activation_t::immediate,
-                    [serve, path](rws::ws_handle_t wsh, rws::message_handle_t m) {
-                        serve->socket_handle(path, wsh, m, false);
-                    }
-                );
-
-            if (serve->sockets.find(path) == serve->sockets.end()) {
-                serve->sockets[path] = std::unordered_map<std::uint64_t, rws::ws_handle_t>();
-            }
-
-            serve->sockets[path].emplace(wsh->connection_id(), wsh);
-
-            serve_socket_push(L, path, serve, wsh);
-        } else {
-            lua::pushboolean(L, false);
         }
 
         return 1;
@@ -2419,9 +2434,6 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
                 lua::pushcfunction(L, serve_sockets);
                 lua::setfield(L, -2, "sockets");
-
-                lua::pushcfunction(L, serve_upgrade);
-                lua::setfield(L, -2, "upgrade");
 
                 lua::pushcfunction(L, serve_socket);
                 lua::setfield(L, -2, "socket");
