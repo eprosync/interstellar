@@ -1702,13 +1702,13 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             waiting--;
             lock.unlock(); lock.release();
 
-            sync_lock.lock();
             request_handling_status_t response = restinio::request_not_handled();
             if (request_responses.find(id) != request_responses.end()) {
                 response = request_responses[id];
                 request_responses.erase(id);
             }
-            sync_lock.unlock(); sync_lock.release();
+
+            processing_ack.notify_one();
 
             return response;
         }
@@ -1728,6 +1728,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 }
                 processing = false;
                 processing_done.notify_all();
+                processing_ack.wait(lock, [this] { return request_responses.empty(); });
                 syncing = false;
                 lock.unlock(); lock.release();
             }
