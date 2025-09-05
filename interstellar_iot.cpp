@@ -1429,15 +1429,12 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 return;
             }
 
-            std::unique_lock<std::mutex> sync_lock(sync_mutex);
+            std::unique_lock<std::mutex> lock(sync_mutex);
             socket_handles.push(std::tuple(path, connection, m));
-            sync_lock.unlock(); sync_lock.release();
-
-            std::unique_lock<std::mutex> lock(schedule_mutex);
             waiting++;
             processing_done.wait(lock, [this] { return !processing.load() && syncing.load(); });
             waiting--;
-            processing_ack.notify_one();
+            processing_ack.notify_all();
             lock.unlock(); lock.release();
         }
 
@@ -1692,15 +1689,11 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
 
             restinio::connection_id_t id = req->connection_id();
 
-            std::unique_lock<std::mutex> sync_lock(sync_mutex);
-            waiting++;
+            std::unique_lock<std::mutex> lock(sync_mutex);
             request_handles.push(&req);
-            sync_lock.unlock();
-
-            std::unique_lock<std::mutex> lock(schedule_mutex);
+            waiting++;
             processing_done.wait(lock, [this, id] { return !processing.load() && syncing.load() && request_responses.find(id) != request_responses.end(); });
             waiting--;
-            lock.unlock(); lock.release();
 
             request_handling_status_t response = restinio::request_not_handled();
             if (request_responses.find(id) != request_responses.end()) {
@@ -1708,7 +1701,8 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 request_responses.erase(id);
             }
 
-            processing_ack.notify_one();
+            processing_ack.notify_all();
+            lock.unlock(); lock.release();
 
             return response;
         }
@@ -1728,7 +1722,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                 }
                 processing = false;
                 processing_done.notify_all();
-                processing_ack.wait(lock, [this] { return request_responses.empty(); });
+                processing_ack.wait(lock, [this] { return waiting.load() == 0 || request_responses.empty(); });
                 syncing = false;
                 lock.unlock(); lock.release();
             }
@@ -1772,7 +1766,6 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         context_t context;
         server_t server;
         std::mutex sync_mutex;
-        std::mutex schedule_mutex;
         std::condition_variable processing_done;
         std::condition_variable processing_ack;
         std::atomic<bool> active = false;
