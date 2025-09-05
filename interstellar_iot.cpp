@@ -1693,14 +1693,12 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             request_handles.push(&req);
             waiting++;
             processing_done.wait(lock, [this, id] { return !processing.load() && syncing.load() && request_responses.find(id) != request_responses.end(); });
-            waiting--;
-
             request_handling_status_t response = restinio::request_not_handled();
             if (request_responses.find(id) != request_responses.end()) {
                 response = request_responses[id];
                 request_responses.erase(id);
             }
-
+            waiting--;
             processing_ack.notify_all();
             lock.unlock(); lock.release();
 
