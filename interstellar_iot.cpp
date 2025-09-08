@@ -14,6 +14,7 @@
 #include <functional>
 #include <vector>
 #include <algorithm>
+#include <limits>
 
 #pragma comment (lib, "iphlpapi.lib")
 #pragma comment (lib, "secur32.lib")
@@ -1281,7 +1282,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         using query_string_params_t = restinio::query_string_params_t;
 
     public:
-        Serve(lua_State* L, uint16_t port) : context(restinio::own_io_context()) {
+        Serve(lua_State* L, uint16_t port) : context(restinio::own_io_context()), limits({}) {
             this->L = L;
             this->port = port;
             this->active = false;
@@ -1420,7 +1421,6 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             }
         }
 
-        std::queue<std::tuple<std::string, rws::ws_handle_t, rws::message_handle_t>> socket_handles;
         void socket_handle(std::string path, rws::ws_handle_t connection, rws::message_handle_t m, bool internal) {
             if (!this->active) return;
 
@@ -1680,8 +1680,6 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         }
 
         request_handle_t request;
-        std::queue<request_handle_t*> request_handles;
-        std::unordered_map<restinio::connection_id_t, request_handling_status_t> request_responses;
         request_handling_status_t process(request_handle_t& req) {
             if (!this->active) {
                 return restinio::request_not_handled();
@@ -1726,12 +1724,14 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             }
         }
 
+        restinio::incoming_http_msg_limits_t limits;
         bool start() {
             if (this->active) return false;
             try {
                 this->server = restinio::run_async(
                     this->context,
                     restinio::server_settings_t<restinio::default_traits_t>{}
+                    .incoming_http_msg_limits(this->limits)
                     .port(this->port)
                     .address("0.0.0.0")
                     .request_handler([this](request_handle_t req) {
@@ -1763,6 +1763,7 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         uint16_t port;
         context_t context;
         server_t server;
+
         std::mutex sync_mutex;
         std::condition_variable processing_done;
         std::condition_variable processing_ack;
@@ -1771,6 +1772,10 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         std::atomic<unsigned int> acks = 0;
         std::atomic<bool> syncing = false;
         std::atomic<bool> processing = false;
+
+        std::queue<request_handle_t*> request_handles;
+        std::unordered_map<restinio::connection_id_t, request_handling_status_t> request_responses;
+        std::queue<std::tuple<std::string, rws::ws_handle_t, rws::message_handle_t>> socket_handles;
     };
 
     class Serve_Socket
@@ -2377,6 +2382,133 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
         return 1;
     }
 
+    int serve__index(lua_State* L)
+    {
+        Serve* serve = (Serve*)Class::check(L, 1, "serve");
+        std::string index = luaL::checkcstring(L, 2);
+
+        if (index == "start") {
+            lua::pushcfunction(L, serve_start);
+            return 1;
+        }
+        else if (index == "stop") {
+            lua::pushcfunction(L, serve_stop);
+            return 1;
+        }
+        else if (index == "active") {
+            lua::pushcfunction(L, serve_active);
+            return 1;
+        }
+        else if (index == "port") {
+            lua::pushcfunction(L, serve_port);
+            return 1;
+        }
+        else if (index == "exists") {
+            lua::pushcfunction(L, serve_exists);
+            return 1;
+        }
+        else if (index == "handlers") {
+            lua::pushcfunction(L, serve_handlers);
+            return 1;
+        }
+        else if (index == "sockets") {
+            lua::pushcfunction(L, serve_sockets);
+            return 1;
+        }
+        else if (index == "socket") {
+            lua::pushcfunction(L, serve_socket);
+            return 1;
+        }
+        else if (index == "clear") {
+            lua::pushcfunction(L, serve_clear);
+            return 1;
+        }
+        else if (index == "any") {
+            lua::pushcfunction(L, serve_any);
+            return 1;
+        }
+        else if (index == "head") {
+            lua::pushcfunction(L, serve_head);
+            return 1;
+        }
+        else if (index == "get") {
+            lua::pushcfunction(L, serve_get);
+            return 1;
+        }
+        else if (index == "post") {
+            lua::pushcfunction(L, serve_post);
+            return 1;
+        }
+        else if (index == "put") {
+            lua::pushcfunction(L, serve_put);
+            return 1;
+        }
+        else if (index == "delete") {
+            lua::pushcfunction(L, serve_delete);
+            return 1;
+        }
+        else if (index == "options") {
+            lua::pushcfunction(L, serve_options);
+            return 1;
+        }
+        else if (index == "patch") {
+            lua::pushcfunction(L, serve_patch);
+            return 1;
+        }
+
+        if (index == "max_body_size") {
+            lua::pushinteger(L, serve->limits.max_body_size());
+            return 1;
+        }
+        else if (index == "max_url_size") {
+            lua::pushinteger(L, serve->limits.max_url_size());
+            return 1;
+        }
+        else if (index == "max_field_count") {
+            lua::pushinteger(L, serve->limits.max_field_count());
+            return 1;
+        }
+        else if (index == "max_field_name_size") {
+            lua::pushinteger(L, serve->limits.max_field_name_size());
+            return 1;
+        }
+        else if (index == "max_field_value_size") {
+            lua::pushinteger(L, serve->limits.max_field_value_size());
+            return 1;
+        }
+
+        return 0;
+    }
+
+    int serve__newindex(lua_State* L)
+    {
+        Serve* serve = (Serve*)Class::check(L, 1, "serve");
+        std::string index = luaL::checkcstring(L, 2);
+
+        if (index == "max_body_size") {
+            serve->limits.max_body_size(luaL::checkinteger(L, 3));
+            return 0;
+        }
+        else if (index == "max_url_size") {
+            serve->limits.max_url_size(luaL::checkinteger(L, 3));
+            return 0;
+        }
+        else if (index == "max_field_count") {
+            serve->limits.max_field_count(luaL::checkinteger(L, 3));
+            return 0;
+        }
+        else if (index == "max_field_name_size") {
+            serve->limits.max_field_name_size(luaL::checkinteger(L, 3));
+            return 0;
+        }
+        else if (index == "max_field_value_size") {
+            serve->limits.max_field_value_size(luaL::checkinteger(L, 3));
+            return 0;
+        }
+
+        return 0;
+    }
+
     int serve__tostring(lua_State* L)
     {
         Serve* serve = (Serve*)Class::check(L, 1, "serve");
@@ -2405,58 +2537,11 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
             lua::pushcfunction(L, serve__gc);
             lua::setfield(L, -2, "__gc");
 
-            lua::newtable(L);
-                lua::pushcfunction(L, serve_start);
-                lua::setfield(L, -2, "start");
-
-                lua::pushcfunction(L, serve_stop);
-                lua::setfield(L, -2, "stop");
-
-                lua::pushcfunction(L, serve_active);
-                lua::setfield(L, -2, "active");
-
-                lua::pushcfunction(L, serve_port);
-                lua::setfield(L, -2, "port");
-
-                lua::pushcfunction(L, serve_exists);
-                lua::setfield(L, -2, "exists");
-
-                lua::pushcfunction(L, serve_handlers);
-                lua::setfield(L, -2, "handlers");
-
-                lua::pushcfunction(L, serve_sockets);
-                lua::setfield(L, -2, "sockets");
-
-                lua::pushcfunction(L, serve_socket);
-                lua::setfield(L, -2, "socket");
-
-                lua::pushcfunction(L, serve_clear);
-                lua::setfield(L, -2, "clear");
-
-                lua::pushcfunction(L, serve_any);
-                lua::setfield(L, -2, "any");
-
-                lua::pushcfunction(L, serve_get);
-                lua::setfield(L, -2, "get");
-
-                lua::pushcfunction(L, serve_head);
-                lua::setfield(L, -2, "head");
-
-                lua::pushcfunction(L, serve_post);
-                lua::setfield(L, -2, "post");
-
-                lua::pushcfunction(L, serve_put);
-                lua::setfield(L, -2, "put");
-
-                lua::pushcfunction(L, serve_delete);
-                lua::setfield(L, -2, "delete");
-
-                lua::pushcfunction(L, serve_options);
-                lua::setfield(L, -2, "options");
-
-                lua::pushcfunction(L, serve_patch);
-                lua::setfield(L, -2, "patch");
+            lua::pushcfunction(L, serve__index);
             lua::setfield(L, -2, "__index");
+
+            lua::pushcfunction(L, serve__newindex);
+            lua::setfield(L, -2, "__newindex");
 
             lua::pop(L);
         }
