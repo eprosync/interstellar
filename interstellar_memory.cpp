@@ -244,6 +244,58 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         return 1;
     }
 
+    lua_CFunction ffi_new = nullptr;
+    int address_tocdata(lua_State* L)
+    {
+        char* address = (char*)Class::check(L, 1, "address");
+        luaL::checkcstring(L, 2);
+
+        if (ffi_new == nullptr) {
+            lua::pushvalue(L, indexer::registry);
+            lua::getfield(L, -1, "_LOADED");
+            lua::remove(L, -2);
+
+            if (!lua::istable(L, -1)) {
+                lua::pop(L);
+                luaL::error(L, "unable to locate _LOADED");
+                return 0;
+            }
+
+            lua::getfield(L, -1, "ffi");
+            lua::remove(L, -2);
+
+            if (!lua::istable(L, -1)) {
+                lua::pop(L);
+                luaL::error(L, "unable to locate ffi, did you forget to require it?");
+                return 0;
+            }
+
+            lua::getfield(L, -1, "new");
+            lua::remove(L, -2);
+
+            if (!lua::iscfunction(L, -1)) {
+                lua::pop(L);
+                luaL::error(L, "unable to locate ffi.new");
+                return 0;
+            }
+
+            ffi_new = lua::tocfunction(L, -1);
+        }
+
+        lua::pushcfunction(L, ffi_new);
+        lua::pushvalue(L, 2);
+        lua::call(L, 1, 1);
+
+        if (!lua::iscdata(L, -1)) {
+            lua::pop(L);
+            return 0;
+        }
+
+        lua::setcdataptr(L, -1, address);
+
+        return 1;
+    }
+
     int address__index(lua_State* L)
     {
         char* address = (char*)Class::check(L, 1, "address");
@@ -308,6 +360,9 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             return 1;
         } else if (index == "double") {
             lua::pushnumber(L, (double)(uintptr_t)address);
+            return 1;
+        } else if (index == "cdata") {
+            lua::pushcfunction(L, address_tocdata);
             return 1;
         }
 
@@ -619,16 +674,13 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
             return 1;
         }
         else if (lua::isuserdata(L, 1)) {
-            using namespace Engine;
             void* udata = lua::touserdata(L, 1);
             push_address(L, (void*)udata);
             return 1;
         }
         else if (lua::iscdata(L, 1))
         {
-            using namespace Engine;
-            void* cdata = lua::tocdataptr(L, 1);
-            push_address(L, (void*)cdata);
+            push_address(L, lua::tocdataptr(L, 1));
             return 1;
         }
         push_address(L, (void*)(uintptr_t)luaL::checkinteger(L, 1));
@@ -639,6 +691,13 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
         size_t size = luaL::checknumber(L, 1);
         push_address(L, malloc(sizeof(unsigned char) * size));
         return 1;
+    }
+
+    int setcdata(lua_State* L) {
+        luaL::checkcdata(L, 1);
+        char* value = (char*)Class::check(L, 2, "address");
+        lua::setcdataptr(L, 1, value);
+        return 0;
     }
 
     int modules(lua_State* L) {
@@ -3737,6 +3796,9 @@ namespace INTERSTELLAR_NAMESPACE::Memory {
 
         lua::pushcfunction(L, allocate);
         lua::setfield(L, -2, "allocate");
+
+        lua::pushcfunction(L, setcdata);
+        lua::setfield(L, -2, "setcdata");
 
         lua::pushcfunction(L, modules);
         lua::setfield(L, -2, "modules");

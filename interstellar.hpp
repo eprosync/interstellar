@@ -723,8 +723,12 @@ namespace INTERSTELLAR_NAMESPACE {
             extern void pop(lua_State* L, int count = 1);
             extern void newuserdatatype(lua_State* L, void* data, size_t size, unsigned char type);
             extern void* touserdatatype(lua_State* L, int index);
+            extern void* tocdata(lua_State* L, int index);
             extern void* tocdataptr(lua_State* L, int index);
             extern void* tocdatafunc(lua_State* L, int index);
+            extern void setcdata(lua_State* L, int index, const void* value);
+            extern void setcdataptr(lua_State* L, int index, const void* value);
+            extern bool setcdatafunc(lua_State* L, int index, const void* value);
             extern void pushcfunction(lua_State* L, lua_CFunction f);
             extern void pushlfunction(lua_State* L, Engine::GCproto* proto, Engine::GCupval* upvptr = nullptr, int upvalues = 0);
             extern void pushnfunction(lua_State* L, std::string name = "");

@@ -793,22 +793,61 @@ namespace INTERSTELLAR_NAMESPACE {
                 return userdata->data;
             }
 
-            void* tocdataptr(lua_State* L, int index)
+            void* tocdata(lua_State* L, int index)
             {
                 using namespace Engine;
                 TValue* tv = toraw(L, index);
                 GCcdata* cd = cdataV(tv);
                 CTState* cts = ctype_cts(L);
                 CType* ct = ctype_raw(cts, cd->ctypeid);
-                CTSize sz = CTSIZE_PTR;
-                if (ctype_isptr(ct->info)) {
-                    sz = ct->size;
-                    ct = ctype_rawchild(cts, ct);
-                }
+                CTSize sz = ct->size;
                 return cdata_getptr(cdataptr(cd), sz);
             }
 
+            void* tocdataptr(lua_State* L, int index)
+            {
+                using namespace Engine;
+                TValue* tv = toraw(L, index);
+                GCcdata* cd = cdataV(tv);
+                return cdataptr(cd);
+            }
+
+            void setcdata(lua_State* L, int index, const void *value)
+            {
+                using namespace Engine;
+                TValue* tv = toraw(L, index);
+                GCcdata* cd = cdataV(tv);
+                CTState* cts = ctype_cts(L);
+                CType* ct = ctype_raw(cts, cd->ctypeid);
+                cdata_setptr(cdataptr(cd), ct->size, value);
+            }
+
+            void setcdataptr(lua_State* L, int index, const void* value)
+            {
+                using namespace Engine;
+                TValue* tv = toraw(L, index);
+                GCcdata* cd = cdataV(tv);
+                CTState* cts = ctype_cts(L);
+                CType* ct = ctype_raw(cts, cd->ctypeid);
+                CTSize sz = ct->size;
+                memcpy(cdataptr(cd), value, sz);
+            }
+
             void* tocdatafunc(lua_State* L, int index)
+            {
+                using namespace Engine;
+                TValue* tv = toraw(L, index);
+                GCcdata* cd = cdataV(tv);
+                CTState* cts = ctype_cts(L);
+                CType* ct = ctype_raw(cts, cd->ctypeid);
+                CTSize sz = ct->size;
+                if (ctype_isfunc(ct->info)) {
+                    return cdata_getptr(cdataptr(cd), sz);
+                }
+                return nullptr;
+            }
+
+            bool setcdatafunc(lua_State* L, int index, const void* value)
             {
                 using namespace Engine;
                 TValue* tv = toraw(L, index);
@@ -821,9 +860,10 @@ namespace INTERSTELLAR_NAMESPACE {
                     ct = ctype_rawchild(cts, ct);
                 }
                 if (ctype_isfunc(ct->info)) {
-                    return cdata_getptr(cdataptr(cd), sz);
+                    cdata_setptr(cdataptr(cd), sz, value);
+                    return true;
                 }
-                return nullptr;
+                return false;
             }
 
             void pushcfunction(lua_State* L, lua_CFunction f)
