@@ -188,13 +188,13 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 			std::string input = std::string(_input, size);
 
 			if (input.size() == 0) {
-				return luaL::error(L, "sodium.base64.encode: invalid input size (must be valid hexstring)");
+				return luaL::error(L, "sodium.base64.xencode: invalid input size (must be valid hexstring)");
 			}
 
 			input = from_hex(input);
 
 			if (input.size() == 0) {
-				return luaL::error(L, "sodium.base64.encode: invalid input size (must be valid hexstring)");
+				return luaL::error(L, "sodium.base64.xencode: invalid input size (must be valid hexstring)");
 			}
 
 			std::string output;
@@ -791,8 +791,6 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 					const char* _salt = luaL::checklstring(L, 2, &size);
 					std::string salt = std::string(_salt, size);
 
-					std::string output;
-
 					try {
 						output = key(input, salt);
 					}
@@ -807,8 +805,6 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 					const char* _input = luaL::checklstring(L, 1, &size);
 					std::string input = std::string(_input, size);
 
-					std::string output;
-
 					try {
 						output = key(input);
 					}
@@ -819,8 +815,6 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 					output = to_hex(output);
 				}
 				else {
-					std::string output;
-
 					try {
 						output = key();
 					}
@@ -1203,8 +1197,6 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 					const char* _salt = luaL::checklstring(L, 2, &size);
 					std::string salt = std::string(_salt, size);
 
-					std::string output;
-
 					try {
 						output = key(input, salt);
 					}
@@ -1219,8 +1211,6 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 					const char* _input = luaL::checklstring(L, 1, &size);
 					std::string input = std::string(_input, size);
 
-					std::string output;
-
 					try {
 						output = key(input);
 					}
@@ -1231,8 +1221,6 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 					output = to_hex(output);
 				}
 				else {
-					std::string output;
-
 					try {
 						output = key();
 					}
@@ -1615,8 +1603,6 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 					const char* _salt = luaL::checklstring(L, 2, &size);
 					std::string salt = std::string(_salt, size);
 
-					std::string output;
-
 					try {
 						output = key(input, salt);
 					}
@@ -1631,8 +1617,6 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 					const char* _input = luaL::checklstring(L, 1, &size);
 					std::string input = std::string(_input, size);
 
-					std::string output;
-
 					try {
 						output = key(input);
 					}
@@ -1643,8 +1627,6 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 					output = to_hex(output);
 				}
 				else {
-					std::string output;
-
 					try {
 						output = key();
 					}
@@ -1998,6 +1980,8 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 			lua::newtable(L);
 				lua::pushcfunction(L, CHACHAPOLY::keyl);
 				lua::setfield(L, -2, "key");
+				lua::pushcfunction(L, CHACHAPOLY::noncel);
+				lua::setfield(L, -2, "nonce");
 				lua::pushcfunction(L, CHACHAPOLY::encodel);
 				lua::setfield(L, -2, "encode");
 				lua::pushcfunction(L, CHACHAPOLY::decodel);
@@ -2011,6 +1995,8 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 			lua::newtable(L);
 				lua::pushcfunction(L, GCM::keyl);
 				lua::setfield(L, -2, "key");
+				lua::pushcfunction(L, GCM::noncel);
+				lua::setfield(L, -2, "nonce");
 				lua::pushcfunction(L, GCM::encodel);
 				lua::setfield(L, -2, "encode");
 				lua::pushcfunction(L, GCM::decodel);
@@ -2024,6 +2010,8 @@ namespace INTERSTELLAR_NAMESPACE::Sodium {
 			lua::newtable(L);
 				lua::pushcfunction(L, AEGIS::keyl);
 				lua::setfield(L, -2, "key");
+				lua::pushcfunction(L, AEGIS::noncel);
+				lua::setfield(L, -2, "nonce");
 				lua::pushcfunction(L, AEGIS::encodel);
 				lua::setfield(L, -2, "encode");
 				lua::pushcfunction(L, AEGIS::decodel);

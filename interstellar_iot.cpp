@@ -2596,36 +2596,30 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     auto& on_error = get_on_error();
                     for (auto const& handle : on_error) handle.second(L, "progress - " + url, err);
                     std::lock_guard<std::mutex> cancel_lock_guard(progress_cancel_lock);
-                    if (!progress_cancel.empty()) {
-                        bool should = true;
-
-                        for (auto& cancel : progress_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                should = false;
-                                break;
-                            }
+                    bool should = true;
+                    for (auto& cancel : progress_cancel) {
+                        if (cancel.first == id && cancel.second == reference) {
+                            should = false;
+                            break;
                         }
+                    }
 
-                        if (should) {
-                            progress_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
-                        }
+                    if (should) {
+                        progress_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
                     }
                 }
                 else if (lua::isboolean(L, -1) && lua::toboolean(L, -1) == false) {
                     std::lock_guard<std::mutex> cancel_lock_guard(progress_cancel_lock);
-                    if (!progress_cancel.empty()) {
-                        bool should = true;
-
-                        for (auto& cancel : progress_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                should = false;
-                                break;
-                            }
+                    bool should = true;
+                    for (auto& cancel : progress_cancel) {
+                        if (cancel.first == id && cancel.second == reference) {
+                            should = false;
+                            break;
                         }
+                    }
 
-                        if (should) {
-                            progress_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
-                        }
+                    if (should) {
+                        progress_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
                     }
                 }
 
@@ -2750,36 +2744,30 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     for (auto const& handle : on_error) handle.second(L, "stream - " + response.url.str(), err);
 
                     std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
-                    if (!stream_cancel.empty()) {
-                        bool should = true;
-
-                        for (auto& cancel : stream_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                should = false;
-                                break;
-                            }
+                    bool should = true;
+                    for (auto& cancel : stream_cancel) {
+                        if (cancel.first == id && cancel.second == reference) {
+                            should = false;
+                            break;
                         }
+                    }
 
-                        if (should) {
-                            stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
-                        }
+                    if (should) {
+                        stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
                     }
                 }
                 else if (lua::isboolean(L, -1) && lua::toboolean(L, -1) == false) {
                     std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
-                    if (!stream_cancel.empty()) {
-                        bool should = true;
-
-                        for (auto& cancel : stream_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                should = false;
-                                break;
-                            }
+                    bool should = true;
+                    for (auto& cancel : stream_cancel) {
+                        if (cancel.first == id && cancel.second == reference) {
+                            should = false;
+                            break;
                         }
+                    }
 
-                        if (should) {
-                            stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
-                        }
+                    if (should) {
+                        stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
                     }
                 }
 
@@ -2894,36 +2882,30 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     auto& on_error = get_on_error();
                     for (auto const& handle : on_error) handle.second(L, "progress - " + url, err);
                     std::lock_guard<std::mutex> cancel_lock_guard(progress_cancel_lock);
-                    if (!progress_cancel.empty()) {
-                        bool should = true;
-
-                        for (auto& cancel : progress_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                should = false;
-                                break;
-                            }
+                    bool should = true;
+                    for (auto& cancel : progress_cancel) {
+                        if (cancel.first == id && cancel.second == reference) {
+                            should = false;
+                            break;
                         }
+                    }
 
-                        if (should) {
-                            progress_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
-                        }
+                    if (should) {
+                        progress_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
                     }
                 }
                 else if (lua::isboolean(L, -1) && lua::toboolean(L, -1) == false) {
                     std::lock_guard<std::mutex> cancel_lock_guard(progress_cancel_lock);
-                    if (!progress_cancel.empty()) {
-                        bool should = true;
-
-                        for (auto& cancel : progress_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                should = false;
-                                break;
-                            }
+                    bool should = true;
+                    for (auto& cancel : progress_cancel) {
+                        if (cancel.first == id && cancel.second == reference) {
+                            should = false;
+                            break;
                         }
+                    }
 
-                        if (should) {
-                            progress_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
-                        }
+                    if (should) {
+                        progress_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
                     }
                 }
 
@@ -3048,36 +3030,31 @@ namespace INTERSTELLAR_NAMESPACE::IOT {
                     for (auto const& handle : on_error) handle.second(L, "stream - " + response.url.str(), err);
 
                     std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
-                    if (!stream_cancel.empty()) {
-                        bool should = true;
-
-                        for (auto& cancel : stream_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                should = false;
-                                break;
-                            }
+                    bool should = true;
+                    for (auto& cancel : stream_cancel) {
+                        if (cancel.first == id && cancel.second == reference) {
+                            should = false;
+                            break;
                         }
+                    }
 
-                        if (should) {
-                            stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
-                        }
+                    if (should) {
+                        stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
                     }
                 }
                 else if (lua::isboolean(L, -1) && lua::toboolean(L, -1) == false) {
                     std::lock_guard<std::mutex> cancel_lock_guard(stream_cancel_lock);
-                    if (!stream_cancel.empty()) {
-                        bool should = true;
 
-                        for (auto& cancel : stream_cancel) {
-                            if (cancel.first == id && cancel.second == reference) {
-                                should = false;
-                                break;
-                            }
+                    bool should = true;
+                    for (auto& cancel : stream_cancel) {
+                        if (cancel.first == id && cancel.second == reference) {
+                            should = false;
+                            break;
                         }
+                    }
 
-                        if (should) {
-                            stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
-                        }
+                    if (should) {
+                        stream_cancel.push_back(std::pair<uintptr_t, int>(id, reference));
                     }
                 }
 
